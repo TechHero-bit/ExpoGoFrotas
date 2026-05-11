@@ -1,0 +1,55 @@
+{
+    "expo": {
+        "name": "Logistics Pro",
+        "slug": "logistics-pro",
+        "version": "1.0.0",
+        "orientation": "portrait",
+        "icon": "./assets/icon.png",
+        "userInterfaceStyle": "light",
+        "splash": {
+            "image": "./assets/splash.png",
+            "resizeMode": "contain",
+            "backgroundColor": "#8B0000"
+        },
+        "assetBundlePatterns": [
+            "**/*"
+        ],
+        "ios": {
+            "supportsTablet": false,
+            "bundleIdentifier": "com.suaempresa.logisticspro",
+            "infoPlist": {
+                "NSCameraUsageDescription": "O app precisa acessar a câmera para tirar fotos do veículo e selfie do técnico.",
+                "NSPhotoLibraryUsageDescription": "O app precisa acessar a galeria para selecionar fotos."
+            }
+        },
+        "android": {
+            "adaptiveIcon": {
+                "foregroundImage": "./assets/adaptive-icon.png",
+                "backgroundColor": "#8B0000"
+            },
+            "package": "com.suaempresa.logisticspro",
+            "permissions": [
+                "CAMERA",
+                "READ_EXTERNAL_STORAGE",
+                "WRITE_EXTERNAL_STORAGE"
+            ]
+        },
+        "web": {
+            "favicon": "./assets/favicon.png"
+        },
+        "plugins": [
+            [
+                "expo-camera",
+                {
+                    "cameraPermission": "O app precisa acessar a câmera para fotos do veículo e selfie."
+                }
+            ],
+            [
+                "expo-image-picker",
+                {
+                    "photosPermission": "O app precisa acessar a galeria."
+                }
+            ]
+        ]
+    }
+}
