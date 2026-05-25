@@ -1,9 +1,62 @@
-import React from 'react';
-import { View, Text, SafeAreaView, StyleSheet, Image } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, SafeAreaView, StyleSheet, Image, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
+import { supabase } from '../services/supabase';
+import { fetchUserProfile } from '../services/dbService';
 
 export default function ProfileScreen() {
+    const [profile, setProfile] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        const loadProfile = async () => {
+            try {
+                const userResponse = await supabase.auth.getUser();
+                const userId = userResponse.data?.user?.id;
+                if (!userId) {
+                    setError('Não foi possível identificar o usuário.');
+                    return;
+                }
+                const userProfile = await fetchUserProfile(userId);
+                setProfile(userProfile);
+            } catch (loadError) {
+                setError('Falha ao carregar perfil.');
+                console.warn(loadError);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadProfile();
+    }, []);
+
+    const handleSignOut = async () => {
+        try {
+            await supabase.auth.signOut();
+        } catch (signOutError) {
+            Alert.alert('Erro', 'Não foi possível sair no momento. Tente novamente.');
+            console.warn(signOutError);
+        }
+    };
+
+    if (loading) {
+        return (
+            <SafeAreaView style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+            </SafeAreaView>
+        );
+    }
+
+    if (error) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <Text style={styles.errorText}>{error}</Text>
+            </SafeAreaView>
+        );
+    }
+
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
@@ -17,19 +70,19 @@ export default function ProfileScreen() {
             </View>
 
             <View style={styles.card}>
-                <Text style={styles.cardTitle}>Ricardo Souza</Text>
-                <Text style={styles.cardSubtitle}>Gerente de Frota</Text>
+                <Text style={styles.cardTitle}>{profile?.nome || 'Usuário'}</Text>
+                <Text style={styles.cardSubtitle}>{profile?.role || 'Perfil'}</Text>
                 <View style={styles.infoRow}>
                     <Ionicons name="mail-outline" size={18} color={COLORS.primary} />
-                    <Text style={styles.infoText}>ricardo.souza@empresa.com</Text>
+                    <Text style={styles.infoText}>{profile?.email || 'Sem e-mail'}</Text>
                 </View>
                 <View style={styles.infoRow}>
                     <Ionicons name="call-outline" size={18} color={COLORS.primary} />
-                    <Text style={styles.infoText}>+55 11 98765-4321</Text>
+                    <Text style={styles.infoText}>{profile?.telefone || 'Sem telefone'}</Text>
                 </View>
             </View>
 
-            <View style={styles.card}> 
+            <View style={styles.card}>
                 <Text style={styles.cardTitle}>Performance da Frota</Text>
                 <View style={styles.metricRow}>
                     <View style={styles.metricBlock}>
@@ -38,16 +91,22 @@ export default function ProfileScreen() {
                     </View>
                     <View style={styles.metricBlock}>
                         <Text style={styles.metricValue}>18</Text>
-                        <Text style={styles.metricLabel}>Viagens/MÃªs</Text>
+                        <Text style={styles.metricLabel}>Viagens/Mês</Text>
                     </View>
                 </View>
             </View>
+
+            <TouchableOpacity style={styles.logoutButton} onPress={handleSignOut} activeOpacity={0.85}>
+                <Ionicons name="log-out-outline" size={18} color={COLORS.white} />
+                <Text style={styles.logoutText}>Sair</Text>
+            </TouchableOpacity>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: COLORS.gray100, padding: SPACING.md },
+    loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.gray100 },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -81,4 +140,16 @@ const styles = StyleSheet.create({
     metricBlock: { flex: 1, padding: SPACING.md, borderRadius: BORDER_RADIUS.sm, backgroundColor: COLORS.gray100, alignItems: 'center' },
     metricValue: { fontSize: 22, fontWeight: '800', color: COLORS.primary },
     metricLabel: { fontSize: 12, color: COLORS.textSecondary, marginTop: SPACING.xs, textAlign: 'center' },
+    logoutButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: SPACING.sm,
+        backgroundColor: COLORS.danger,
+        paddingVertical: SPACING.md,
+        borderRadius: BORDER_RADIUS.lg,
+        marginTop: SPACING.sm,
+    },
+    logoutText: { color: COLORS.white, fontWeight: '700', fontSize: 15 },
+    errorText: { color: COLORS.danger, textAlign: 'center', marginTop: SPACING.md },
 });

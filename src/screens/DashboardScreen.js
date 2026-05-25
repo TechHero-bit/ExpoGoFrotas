@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     View,
     Text,
@@ -6,28 +6,62 @@ import {
     StyleSheet,
     SafeAreaView,
     Image,
+    ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
-
-const SUMMARY_CARDS = [
-    { label: 'DisponÃ­veis', value: '08', icon: 'checkmark-circle-outline' },
-    { label: 'Em rota', value: '03', icon: 'car-outline' },
-    { label: 'ManutenÃ§Ã£o', value: '01', icon: 'construct-outline' },
-];
+import { supabase } from '../services/supabase';
+import { fetchUserProfile, fetchDashboardMetrics } from '../services/dbService';
 
 export default function DashboardScreen({ navigation }) {
+    const [profile, setProfile] = useState(null);
+    const [metrics, setMetrics] = useState({ disponiveis: 0, emRota: 0, manutencao: 0 });
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const loadData = async () => {
+            try {
+                const userResponse = await supabase.auth.getUser();
+                const userId = userResponse.data?.user?.id;
+                if (!userId) {
+                    return;
+                }
+
+                const [userProfile, dashboardMetrics] = await Promise.all([
+                    fetchUserProfile(userId),
+                    fetchDashboardMetrics(),
+                ]);
+
+                setProfile(userProfile);
+                setMetrics(dashboardMetrics);
+            } catch (error) {
+                console.warn('Erro ao carregar dashboard', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadData();
+    }, []);
+
+    if (loading) {
+        return (
+            <SafeAreaView style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+            </SafeAreaView>
+        );
+    }
+
     return (
         <SafeAreaView style={styles.container}>
-            {/* Header */}
             <View style={styles.header}>
                 <View style={styles.headerLeft}>
                     <View style={styles.avatar}>
                         <Ionicons name="person" size={20} color={COLORS.white} />
                     </View>
                     <View>
-                        <Text style={styles.appName}>Logistics Pro</Text>
-                        <Text style={styles.userName}>Ricardo Souza</Text>
+                        <Text style={styles.appName}>LogiTrack</Text>
+                        <Text style={styles.userName}>{profile?.nome ?? 'Gestor de Frota'}</Text>
                     </View>
                 </View>
                 <TouchableOpacity style={styles.bellBtn}>
@@ -35,36 +69,45 @@ export default function DashboardScreen({ navigation }) {
                 </TouchableOpacity>
             </View>
 
-            {/* Main Content */}
             <View style={styles.content}>
-                {/* Start Journey Button */}
                 <TouchableOpacity
                     style={styles.startButton}
                     onPress={() => navigation.navigate('VehicleCheckin')}
                     activeOpacity={0.85}
                 >
-                    <Text style={styles.startButtonText}>INICIAR{'\n'}JORNADA</Text>
+                    <Text style={styles.startButtonText}>INICIAR{'
+'}JORNADA</Text>
                 </TouchableOpacity>
-
-                <Text style={styles.subtext}>(Retirar VeÃ­culo)</Text>
+                <Text style={styles.subtext}>Registre um novo check-in e libere o veículo para jornada.</Text>
             </View>
 
             <View style={styles.heroCard}>
-                <View>
+                <View style={styles.heroTextContainer}>
                     <Text style={styles.heroTitle}>Controle da sua frota</Text>
-                    <Text style={styles.heroSubtitle}>Acompanhe viagens, check-ins e a disponibilidade dos veÃ­culos em tempo real.</Text>
+                    <Text style={styles.heroSubtitle}>Acompanhe viagens, check-ins e a disponibilidade dos veículos em tempo real.</Text>
                 </View>
-                <Image source={{ uri: 'https://images.unsplash.com/photo-1517530095992-4b4cc5a6ccc1?auto=format&fit=crop&w=900&q=80' }} style={styles.heroImage} />
+                <Image
+                    source={{ uri: 'https://images.unsplash.com/photo-1517530095992-4b4cc5a6ccc1?auto=format&fit=crop&w=900&q=80' }}
+                    style={styles.heroImage}
+                />
             </View>
 
             <View style={styles.summaryRow}>
-                {SUMMARY_CARDS.map((item) => (
-                    <View key={item.label} style={styles.summaryCard}>
-                        <Ionicons name={item.icon} size={22} color={COLORS.primary} />
-                        <Text style={styles.summaryValue}>{item.value}</Text>
-                        <Text style={styles.summaryLabel}>{item.label}</Text>
-                    </View>
-                ))}
+                <View style={styles.summaryCard}>
+                    <Ionicons name="checkmark-circle-outline" size={22} color={COLORS.primary} />
+                    <Text style={styles.summaryValue}>{metrics.disponiveis}</Text>
+                    <Text style={styles.summaryLabel}>Disponíveis</Text>
+                </View>
+                <View style={styles.summaryCard}>
+                    <Ionicons name="car-outline" size={22} color={COLORS.primary} />
+                    <Text style={styles.summaryValue}>{metrics.emRota}</Text>
+                    <Text style={styles.summaryLabel}>Em rota</Text>
+                </View>
+                <View style={styles.summaryCard}>
+                    <Ionicons name="construct-outline" size={22} color={COLORS.primary} />
+                    <Text style={styles.summaryValue}>{metrics.manutencao}</Text>
+                    <Text style={styles.summaryLabel}>Manutenção</Text>
+                </View>
             </View>
 
             <View style={styles.actionsContainer}>
@@ -86,6 +129,7 @@ export default function DashboardScreen({ navigation }) {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: COLORS.gray100, padding: SPACING.md },
+    loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.gray100 },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -164,8 +208,9 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: COLORS.border,
     },
+    heroTextContainer: { flex: 1, paddingRight: SPACING.sm },
     heroTitle: { fontSize: 22, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.xs },
-    heroSubtitle: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 20, flex: 1 },
+    heroSubtitle: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 20 },
     heroImage: { width: 98, height: 98, borderRadius: BORDER_RADIUS.lg },
     summaryRow: { flexDirection: 'row', justifyContent: 'space-between', gap: SPACING.sm, marginBottom: SPACING.md },
     summaryCard: {

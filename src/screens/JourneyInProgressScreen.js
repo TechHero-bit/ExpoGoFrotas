@@ -1,231 +1,159 @@
-import React, { useState, useEffect } from 'react';
-import {
-    View,
-    Text,
-    TouchableOpacity,
-    StyleSheet,
-    SafeAreaView,
-    ScrollView,
-    Alert,
-} from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
+import { supabase } from '../services/supabase';
+import { fetchActiveJourney, fetchVeiculoById } from '../services/dbService';
 
 export default function JourneyInProgressScreen({ navigation }) {
-    const [seconds, setSeconds] = useState(9912); // 02:45:12
+  const [journey, setJourney] = useState(null);
+  const [vehicle, setVehicle] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [duration, setDuration] = useState('00:00:00');
 
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setSeconds((prev) => prev + 1);
-        }, 1000);
-        return () => clearInterval(interval);
-    }, []);
+  useEffect(() => {
+    let interval;
 
-    const formatTime = (totalSeconds) => {
-        const h = Math.floor(totalSeconds / 3600).toString().padStart(2, '0');
-        const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0');
-        const s = (totalSeconds % 60).toString().padStart(2, '0');
-        return `${h}:${m}:${s}`;
+    const loadJourney = async () => {
+      try {
+        const userResponse = await supabase.auth.getUser();
+        const usuarioId = userResponse.data?.user?.id;
+        if (!usuarioId) return;
+
+        const currentJourney = await fetchActiveJourney(usuarioId);
+        if (!currentJourney) {
+          setJourney(null);
+          return;
+        }
+
+        setJourney(currentJourney);
+        const currentVehicle = await fetchVeiculoById(currentJourney.veiculo_id);
+        setVehicle(currentVehicle);
+
+        const updateDuration = () => {
+          if (!currentJourney.inicio) return;
+          const start = new Date(currentJourney.inicio);
+          const seconds = Math.max(0, Math.floor((Date.now() - start.getTime()) / 1000));
+          const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
+          const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+          const s = String(seconds % 60).padStart(2, '0');
+          setDuration(`${h}:${m}:${s}`);
+        };
+
+        updateDuration();
+        interval = setInterval(updateDuration, 1000);
+      } catch (error) {
+        console.warn('Erro ao carregar jornada ativa', error);
+      } finally {
+        setLoading(false);
+      }
     };
 
-    const handleArrivedAtClient = () => {
-        Alert.alert(
-            'Chegou no Cliente',
-            'Confirmar chegada ao destino?',
-            [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: 'Confirmar', onPress: () => navigation.navigate('VehicleCheckout') },
-            ]
-        );
-    };
+    loadJourney();
+    return () => clearInterval(interval);
+  }, []);
 
-    const handleReturnToBase = () => {
-        Alert.alert(
-            'Retornar à Base',
-            'Deseja encerrar a rota e retornar à base?',
-            [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: 'Confirmar', onPress: () => navigation.navigate('VehicleCheckout') },
-            ]
-        );
-    };
+  const handleFinish = () => {
+    navigation.navigate('VehicleCheckout');
+  };
 
+  if (loading) {
     return (
-        <SafeAreaView style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <View style={styles.headerLeft}>
-                    <View style={styles.avatar}>
-                        <Ionicons name="person" size={18} color={COLORS.white} />
-                    </View>
-                    <Text style={styles.appName}>Logistics Pro</Text>
-                </View>
-                <TouchableOpacity>
-                    <Ionicons name="notifications-outline" size={24} color={COLORS.gray700} />
-                </TouchableOpacity>
-            </View>
-
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                {/* Status Title */}
-                <Text style={styles.statusTitle}>Status Atual</Text>
-
-                {/* Timer */}
-                <Text style={styles.timer}>{formatTime(seconds)}</Text>
-                <View style={styles.timerLabel}>
-                    <Text style={styles.timerLabelText}>TEMPO DE ROTA</Text>
-                </View>
-
-                {/* Destination Card */}
-                <View style={styles.destinationCard}>
-                    <View style={styles.destinationHeader}>
-                        <Ionicons name="location" size={16} color={COLORS.primary} />
-                        <Text style={styles.destinationHeaderText}>DESTINO EM ROTA</Text>
-                    </View>
-
-                    <Text style={styles.destinationName}>Centro de Distribuição Norte</Text>
-                    <Text style={styles.destinationAddress}>
-                        Av. das Indústrias, 4500 - Galpão 3{'\n'}
-                        Zona Industrial, Setor B
-                    </Text>
-
-                    <View style={styles.etaRow}>
-                        <Text style={styles.etaLabel}>Previsão de Chegada</Text>
-                        <Text style={styles.etaValue}>14:30</Text>
-                    </View>
-                </View>
-
-                {/* Action Buttons */}
-                <TouchableOpacity
-                    style={styles.primaryBtn}
-                    onPress={handleArrivedAtClient}
-                    activeOpacity={0.85}
-                >
-                    <Text style={styles.primaryBtnText}>Cheguei no Cliente</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={styles.secondaryBtn}
-                    onPress={handleReturnToBase}
-                    activeOpacity={0.8}
-                >
-                    <Text style={styles.secondaryBtnText}>Retornar à Base</Text>
-                </TouchableOpacity>
-            </ScrollView>
-        </SafeAreaView>
+      <SafeAreaView style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </SafeAreaView>
     );
+  }
+
+  if (!journey) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>Nenhuma jornada em andamento</Text>
+          <Text style={styles.emptySubtitle}>Inicie um check-in para começar uma nova jornada.</Text>
+          <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('VehicleCheckin')} activeOpacity={0.85}>
+            <Text style={styles.primaryBtnText}>Iniciar Jornada</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.sectionTitle}>Jornada em Andamento</Text>
+          <Text style={styles.sectionSubtitle}>{vehicle?.modelo ?? 'Veículo em rota'}</Text>
+        </View>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicons name="close-circle-outline" size={28} color={COLORS.gray700} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.infoCard}>
+        <Text style={styles.infoLabel}>Veículo</Text>
+        <Text style={styles.infoText}>{vehicle?.placa ?? '---'} · {vehicle?.modelo ?? '---'}</Text>
+
+        <Text style={styles.infoLabel}>Origem</Text>
+        <Text style={styles.infoText}>{journey.origem || 'Não informado'}</Text>
+
+        <Text style={styles.infoLabel}>Destino</Text>
+        <Text style={styles.infoText}>{journey.destino || 'Não informado'}</Text>
+
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{duration}</Text>
+            <Text style={styles.statLabel}>Tempo de Rota</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{vehicle?.eta ?? '---'}</Text>
+            <Text style={styles.statLabel}>ETA</Text>
+          </View>
+        </View>
+      </View>
+
+      <TouchableOpacity style={styles.primaryBtn} onPress={handleFinish} activeOpacity={0.85}>
+        <Text style={styles.primaryBtnText}>Finalizar Jornada</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.secondaryBtn} onPress={() => navigation.navigate('Dashboard')} activeOpacity={0.85}>
+        <Text style={styles.secondaryBtnText}>Voltar ao Painel</Text>
+      </TouchableOpacity>
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: COLORS.white },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: SPACING.md,
-        paddingVertical: SPACING.md,
-        borderBottomWidth: 1,
-        borderBottomColor: COLORS.border,
-    },
-    headerLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-    avatar: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: COLORS.primary,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    appName: { fontSize: 16, fontWeight: '700', color: COLORS.text },
-    scrollContent: {
-        paddingHorizontal: SPACING.md,
-        paddingTop: SPACING.lg,
-        paddingBottom: SPACING.xl,
-        alignItems: 'center',
-    },
-    statusTitle: {
-        fontSize: 22,
-        fontWeight: '700',
-        color: COLORS.text,
-        marginBottom: SPACING.md,
-    },
-    timer: {
-        fontSize: 52,
-        fontWeight: '800',
-        color: COLORS.text,
-        letterSpacing: 2,
-        fontVariant: ['tabular-nums'],
-    },
-    timerLabel: {
-        marginBottom: SPACING.xl,
-        marginTop: SPACING.xs,
-    },
-    timerLabelText: {
-        fontSize: 11,
-        fontWeight: '700',
-        color: COLORS.gray500,
-        letterSpacing: 2,
-    },
-    destinationCard: {
-        width: '100%',
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        borderRadius: BORDER_RADIUS.md,
-        padding: SPACING.md,
-        marginBottom: SPACING.lg,
-        backgroundColor: COLORS.white,
-    },
-    destinationHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: SPACING.xs,
-        marginBottom: SPACING.sm,
-    },
-    destinationHeaderText: {
-        fontSize: 11,
-        fontWeight: '700',
-        color: COLORS.primary,
-        letterSpacing: 1,
-    },
-    destinationName: {
-        fontSize: 20,
-        fontWeight: '800',
-        color: COLORS.text,
-        marginBottom: SPACING.xs,
-    },
-    destinationAddress: {
-        fontSize: 13,
-        color: COLORS.textSecondary,
-        lineHeight: 20,
-        marginBottom: SPACING.md,
-    },
-    etaRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        borderTopWidth: 1,
-        borderTopColor: COLORS.border,
-        paddingTop: SPACING.sm,
-    },
-    etaLabel: { fontSize: 13, color: COLORS.textSecondary },
-    etaValue: { fontSize: 16, fontWeight: '800', color: COLORS.primary },
-    primaryBtn: {
-        width: '100%',
-        backgroundColor: COLORS.primary,
-        paddingVertical: SPACING.md,
-        borderRadius: BORDER_RADIUS.md,
-        alignItems: 'center',
-        marginBottom: SPACING.sm,
-        elevation: 3,
-    },
-    primaryBtnText: { color: COLORS.white, fontSize: 16, fontWeight: '700' },
-    secondaryBtn: {
-        width: '100%',
-        borderWidth: 2,
-        borderColor: COLORS.border,
-        borderStyle: 'dashed',
-        paddingVertical: SPACING.md,
-        borderRadius: BORDER_RADIUS.md,
-        alignItems: 'center',
-    },
-    secondaryBtnText: { color: COLORS.text, fontSize: 16, fontWeight: '600' },
+  container: { flex: 1, backgroundColor: COLORS.gray100, padding: SPACING.md },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.gray100 },
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: SPACING.md, gap: SPACING.sm },
+  emptyTitle: { fontSize: 22, fontWeight: '800', color: COLORS.text, textAlign: 'center' },
+  emptySubtitle: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', marginBottom: SPACING.lg },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  sectionTitle: { fontSize: 22, fontWeight: '800', color: COLORS.text },
+  sectionSubtitle: { color: COLORS.textSecondary, fontSize: 13, marginTop: SPACING.xs },
+  infoCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  infoLabel: { fontSize: 12, color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 1, marginTop: SPACING.sm },
+  infoText: { fontSize: 16, fontWeight: '700', color: COLORS.text },
+  statsRow: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
+  statCard: { flex: 1, backgroundColor: COLORS.gray100, borderRadius: BORDER_RADIUS.md, padding: SPACING.md, alignItems: 'center' },
+  statValue: { fontSize: 18, fontWeight: '800', color: COLORS.text },
+  statLabel: { fontSize: 12, color: COLORS.textSecondary, marginTop: SPACING.xs },
+  primaryBtn: { backgroundColor: COLORS.primary, borderRadius: BORDER_RADIUS.md, paddingVertical: SPACING.md, alignItems: 'center', marginBottom: SPACING.sm },
+  primaryBtnText: { color: COLORS.white, fontWeight: '700', fontSize: 16 },
+  secondaryBtn: { backgroundColor: COLORS.white, borderRadius: BORDER_RADIUS.md, paddingVertical: SPACING.md, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
+  secondaryBtnText: { color: COLORS.textSecondary, fontWeight: '700', fontSize: 16 },
 });
