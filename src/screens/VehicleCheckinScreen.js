@@ -60,12 +60,33 @@ export default function VehicleCheckinScreen({ navigation }) {
   };
 
   const handleConfirm = async () => {
+    // ============================================
+    // VALIDAÇÃO PRÉ-REQUISITOS
+    // ============================================
     if (!selectedVehicle) {
-      Alert.alert('Selecione um veículo', 'Escolha um veículo disponível para iniciar o check-in.');
+      Alert.alert('⚠️ Selecione um veículo', 'Escolha um veículo disponível para iniciar o check-in.');
       return;
     }
+
     if (!kmInicial.trim()) {
-      Alert.alert('Informe o KM inicial', 'Digite o KM atual do veículo antes de prosseguir.');
+      Alert.alert('⚠️ KM inicial obrigatório', 'Digite o KM atual do veículo antes de prosseguir.');
+      return;
+    }
+
+    // Validar KM é um número válido
+    const kmNumerico = Number(kmInicial);
+    if (isNaN(kmNumerico) || kmNumerico < 0) {
+      Alert.alert('⚠️ KM inválido', 'Digite um número válido e não-negativo para o KM.');
+      return;
+    }
+
+    if (!origem.trim()) {
+      Alert.alert('⚠️ Origem obrigatória', 'Informe de onde a jornada começará.');
+      return;
+    }
+
+    if (!destino.trim()) {
+      Alert.alert('⚠️ Destino obrigatório', 'Informe para onde a jornada irá.');
       return;
     }
 
@@ -73,28 +94,119 @@ export default function VehicleCheckinScreen({ navigation }) {
     setError(null);
 
     try {
+      // ============================================
+      // 1. OBTER ID DO USUÁRIO AUTENTICADO
+      // ============================================
+      console.log('[VehicleCheckin] Obtendo usuário autenticado...');
       const userResponse = await supabase.auth.getUser();
       const usuarioId = userResponse.data?.user?.id;
 
       if (!usuarioId) {
-        throw new Error('Usuário não autenticado.');
+        console.error('[VehicleCheckin] usuarioId não encontrado:', userResponse);
+        throw new Error('Sua sessão expirou. Faça login novamente.');
       }
 
-      await createJourneyAndCheckin({
+      console.log('[VehicleCheckin] usuarioId obtido:', usuarioId);
+
+      // ============================================
+      // 2. CRIAR JORNADA E CHECK-IN
+      // ============================================
+      console.log('[VehicleCheckin] Chamando createJourneyAndCheckin...');
+      console.log('[VehicleCheckin] selectedVehicle:', selectedVehicle);
+      console.log('[VehicleCheckin] veiculoId a enviar:', selectedVehicle.id, 'tipo:', typeof selectedVehicle.id);
+
+      const result = await createJourneyAndCheckin({
         usuarioId,
         veiculoId: selectedVehicle.id,
-        kmInicial,
+        kmInicial: kmNumerico,
         nivelCombustivel: combustivel,
         selfieUrl: selfieUri,
         placaUrl: placaUri,
-        origem,
-        destino,
+        origem: origem.trim(),
+        destino: destino.trim(),
       });
 
-      navigation.navigate('JourneyInProgress');
+      console.log('[VehicleCheckin] Sucesso! Resultado:', result);
+
+      // ============================================
+      // 3. NAVEGAR PARA TELA DE JORNADA EM ANDAMENTO
+      // ============================================
+      Alert.alert('✅ Sucesso!', 'Jornada iniciada com sucesso!', [
+        {
+          text: 'OK',
+          onPress: () => {
+            setSaving(false);
+            setError(null);
+            navigation.navigate('JourneyInProgress');
+          },
+        },
+      ]);
     } catch (saveError) {
-      console.warn('Erro ao iniciar jornada', saveError);
-      setError('Falha ao iniciar a jornada. Tente novamente.');
+      console.error('[VehicleCheckin] Erro ao iniciar jornada:', {
+        message: saveError.message,
+        stack: saveError.stack,
+      });
+
+      // ============================================
+      // TRATAMENTO DE ERRO COM MENSAGENS CLARAS
+      // ============================================
+      let errorMessage = 'Falha ao iniciar a jornada.';
+
+      // Erro de autenticação
+      if (saveError.message?.includes('Usuário não autenticado') || saveError.message?.includes('sessão expirou')) {
+        errorMessage = 'Sua sessão expirou. Faça login novamente.';
+      }
+      // Erro de validação de entrada
+      else if (saveError.message?.includes('usuarioId')) {
+        errorMessage = 'Erro de autenticação. Faça login novamente.';
+      }
+      else if (saveError.message?.includes('veículo')) {
+        errorMessage = 'Veículo selecionado é inválido. Escolha outro.';
+      }
+      else if (saveError.message?.includes('KM')) {
+        errorMessage = 'KM inicial deve ser um número válido.';
+      }
+      else if (saveError.message?.includes('Origem')) {
+        errorMessage = 'Origem da jornada é obrigatória.';
+      }
+      else if (saveError.message?.includes('Destino')) {
+        errorMessage = 'Destino da jornada é obrigatório.';
+      }
+      // Erro de foreign key
+      else if (saveError.message?.includes('foreign key')) {
+        errorMessage = 'Usuário ou veículo não encontrado. Tente fazer login novamente.';
+      }
+      // Erro de constraint
+      else if (saveError.message?.includes('constraint')) {
+        errorMessage = 'Violação de regra do banco de dados. Contate o suporte.';
+      }
+      // Erro de conexão
+      else if (saveError.message?.includes('network') || saveError.message?.includes('connection')) {
+        errorMessage = 'Erro de conexão com o servidor. Verifique sua internet.';
+      }
+      // Usar mensagem original se disponível
+      else if (saveError.message) {
+        errorMessage = saveError.message;
+      }
+
+      setError(errorMessage);
+
+      // Exibir alert com opção de retry
+      Alert.alert('❌ Erro ao iniciar jornada', errorMessage, [
+        {
+          text: 'Tentar novamente',
+          onPress: () => {
+            setError(null);
+          },
+        },
+        {
+          text: 'Cancelar',
+          onPress: () => {
+            setError(null);
+          },
+          style: 'cancel',
+        },
+      ]);
     } finally {
       setSaving(false);
     }

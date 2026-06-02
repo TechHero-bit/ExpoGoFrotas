@@ -22,6 +22,7 @@ export default function DashboardScreen({ navigation }) {
         const loadData = async () => {
             try {
                 const userResponse = await supabase.auth.getUser();
+                console.log('[DEBUG LOGITRACK] DashboardScreen getUser response:', userResponse);
                 const userId = userResponse.data?.user?.id;
                 if (!userId) {
                     return;
@@ -32,6 +33,7 @@ export default function DashboardScreen({ navigation }) {
                     fetchDashboardMetrics(),
                 ]);
 
+                console.log('[DEBUG LOGITRACK] DashboardScreen loadData results:', { userId, userProfile, dashboardMetrics });
                 setProfile(userProfile);
                 setMetrics(dashboardMetrics);
             } catch (error) {
@@ -75,16 +77,15 @@ export default function DashboardScreen({ navigation }) {
                     onPress={() => navigation.navigate('VehicleCheckin')}
                     activeOpacity={0.85}
                 >
-                    <Text style={styles.startButtonText}>INICIAR{'
-'}JORNADA</Text>
+                    <Text style={styles.startButtonText}>INICIAR JORNADA</Text>
                 </TouchableOpacity>
-                <Text style={styles.subtext}>Registre um novo check-in e libere o veículo para jornada.</Text>
+                <Text style={styles.subtext}>Registre um novo check-in e libere o veï¿½culo para jornada.</Text>
             </View>
 
             <View style={styles.heroCard}>
                 <View style={styles.heroTextContainer}>
                     <Text style={styles.heroTitle}>Controle da sua frota</Text>
-                    <Text style={styles.heroSubtitle}>Acompanhe viagens, check-ins e a disponibilidade dos veículos em tempo real.</Text>
+                    <Text style={styles.heroSubtitle}>Acompanhe viagens, check-ins e a disponibilidade dos veï¿½culos em tempo real.</Text>
                 </View>
                 <Image
                     source={{ uri: 'https://images.unsplash.com/photo-1517530095992-4b4cc5a6ccc1?auto=format&fit=crop&w=900&q=80' }}
@@ -96,7 +97,7 @@ export default function DashboardScreen({ navigation }) {
                 <View style={styles.summaryCard}>
                     <Ionicons name="checkmark-circle-outline" size={22} color={COLORS.primary} />
                     <Text style={styles.summaryValue}>{metrics.disponiveis}</Text>
-                    <Text style={styles.summaryLabel}>Disponíveis</Text>
+                    <Text style={styles.summaryLabel}>Disponï¿½veis</Text>
                 </View>
                 <View style={styles.summaryCard}>
                     <Ionicons name="car-outline" size={22} color={COLORS.primary} />
@@ -106,7 +107,7 @@ export default function DashboardScreen({ navigation }) {
                 <View style={styles.summaryCard}>
                     <Ionicons name="construct-outline" size={22} color={COLORS.primary} />
                     <Text style={styles.summaryValue}>{metrics.manutencao}</Text>
-                    <Text style={styles.summaryLabel}>Manutenção</Text>
+                    <Text style={styles.summaryLabel}>Manutenï¿½ï¿½o</Text>
                 </View>
             </View>
 

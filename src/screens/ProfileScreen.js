@@ -14,12 +14,14 @@ export default function ProfileScreen() {
         const loadProfile = async () => {
             try {
                 const userResponse = await supabase.auth.getUser();
+                console.log('[DEBUG LOGITRACK] ProfileScreen getUser response:', userResponse);
                 const userId = userResponse.data?.user?.id;
                 if (!userId) {
-                    setError('Não foi possível identificar o usuário.');
+                    setError('Nï¿½o foi possï¿½vel identificar o usuï¿½rio.');
                     return;
                 }
                 const userProfile = await fetchUserProfile(userId);
+                console.log('[DEBUG LOGITRACK] ProfileScreen fetchUserProfile result:', userProfile);
                 setProfile(userProfile);
             } catch (loadError) {
                 setError('Falha ao carregar perfil.');
@@ -36,7 +38,7 @@ export default function ProfileScreen() {
         try {
             await supabase.auth.signOut();
         } catch (signOutError) {
-            Alert.alert('Erro', 'Não foi possível sair no momento. Tente novamente.');
+            Alert.alert('Erro', 'Nï¿½o foi possï¿½vel sair no momento. Tente novamente.');
             console.warn(signOutError);
         }
     };
@@ -70,7 +72,7 @@ export default function ProfileScreen() {
             </View>
 
             <View style={styles.card}>
-                <Text style={styles.cardTitle}>{profile?.nome || 'Usuário'}</Text>
+                <Text style={styles.cardTitle}>{profile?.nome || 'Usuï¿½rio'}</Text>
                 <Text style={styles.cardSubtitle}>{profile?.role || 'Perfil'}</Text>
                 <View style={styles.infoRow}>
                     <Ionicons name="mail-outline" size={18} color={COLORS.primary} />
@@ -91,7 +93,7 @@ export default function ProfileScreen() {
                     </View>
                     <View style={styles.metricBlock}>
                         <Text style={styles.metricValue}>18</Text>
-                        <Text style={styles.metricLabel}>Viagens/Mês</Text>
+                        <Text style={styles.metricLabel}>Viagens/Mï¿½s</Text>
                     </View>
                 </View>
             </View>

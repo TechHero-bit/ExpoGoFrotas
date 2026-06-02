@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, SafeAreaView, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, SafeAreaView, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 import { fetchVeiculos } from '../services/dbService';
+import { AdminOnly } from '../components/AdminGuard';
 
-export default function FleetScreen() {
+export default function FleetScreen({ navigation }) {
     const [veiculos, setVeiculos] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -15,7 +16,7 @@ export default function FleetScreen() {
                 const data = await fetchVeiculos();
                 setVeiculos(data || []);
             } catch (loadError) {
-                setError('Não foi possível carregar os veículos. Tente novamente.');
+                setError('Erro ao carregar veiculos.');
                 console.warn(loadError);
             } finally {
                 setLoading(false);
@@ -28,8 +29,8 @@ export default function FleetScreen() {
     const countByStatus = (status) => veiculos.filter((vehicle) => vehicle.status === status).length;
 
     const getBadgeStyle = (status) => {
-        if (status === 'Disponível') return styles.statusAvailable;
-        if (status === 'Manutenção') return styles.statusWarning;
+        if (status === 'Disponivel') return styles.statusAvailable;
+        if (status === 'Manutencao') return styles.statusWarning;
         return styles.statusActive;
     };
 
@@ -46,28 +47,42 @@ export default function FleetScreen() {
             <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
                 <View style={styles.header}>
                     <Text style={styles.title}>Frota</Text>
-                    <Text style={styles.subtitle}>Visão geral dos veículos da empresa</Text>
+                    <Text style={styles.subtitle}>Visao geral dos veiculos da empresa</Text>
                 </View>
+
+                <AdminOnly>
+                    <TouchableOpacity
+                        style={styles.adminAddButton}
+                        onPress={() => navigation.navigate('CreateVehicle')}
+                        activeOpacity={0.85}
+                    >
+                        <Ionicons name="add-circle" size={20} color={COLORS.white} />
+                        <Text style={styles.adminAddButtonText}>Cadastrar Veiculo</Text>
+                        <View style={styles.adminTag}>
+                            <Ionicons name="shield-checkmark" size={12} color={COLORS.white} />
+                        </View>
+                    </TouchableOpacity>
+                </AdminOnly>
 
                 <View style={styles.statsRow}>
                     <View style={styles.statCard}>
                         <Text style={styles.statValue}>{veiculos.length}</Text>
-                        <Text style={styles.statLabel}>Veículos</Text>
+                        <Text style={styles.statLabel}>Veiculos</Text>
                     </View>
                     <View style={styles.statCard}>
-                        <Text style={styles.statValue}>{countByStatus('Disponível')}</Text>
+                        <Text style={styles.statValue}>{countByStatus('Disponivel')}</Text>
                         <Text style={styles.statLabel}>Ativos</Text>
                     </View>
                     <View style={styles.statCard}>
-                        <Text style={styles.statValue}>{countByStatus('Manutenção')}</Text>
-                        <Text style={styles.statLabel}>Manutenção</Text>
+                        <Text style={styles.statValue}>{countByStatus('Manutencao')}</Text>
+                        <Text style={styles.statLabel}>Manutencao</Text>
                     </View>
                 </View>
 
                 {error ? (
                     <Text style={styles.errorText}>{error}</Text>
                 ) : !veiculos.length ? (
-                    <Text style={styles.emptyText}>Nenhum veículo cadastrado no momento.</Text>
+                    <Text style={styles.emptyText}>Nenhum veiculo cadastrado no momento.</Text>
                 ) : (
                     veiculos.map((vehicle) => (
                         <View key={vehicle.id} style={styles.vehicleCard}>
@@ -83,11 +98,11 @@ export default function FleetScreen() {
                             <View style={styles.vehicleInfoRow}>
                                 <View style={styles.infoBlock}>
                                     <Ionicons name="location-outline" size={16} color={COLORS.primary} />
-                                    <Text style={styles.infoText}>{vehicle.localizacao || 'Não informado'}</Text>
+                                    <Text style={styles.infoText}>{vehicle.localizacao || 'Nao informado'}</Text>
                                 </View>
                                 <View style={styles.infoBlock}>
                                     <Ionicons name="time-outline" size={16} color={COLORS.primary} />
-                                    <Text style={styles.infoText}>ETA {vehicle.eta || '—'}</Text>
+                                    <Text style={styles.infoText}>ETA {vehicle.eta || '-'}</Text>
                                 </View>
                             </View>
                         </View>
@@ -105,6 +120,27 @@ const styles = StyleSheet.create({
     header: { gap: SPACING.xs, paddingTop: SPACING.md, paddingHorizontal: SPACING.md },
     title: { fontSize: 28, fontWeight: '800', color: COLORS.text },
     subtitle: { fontSize: 14, color: COLORS.textSecondary },
+    adminAddButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: SPACING.sm,
+        backgroundColor: COLORS.primary,
+        paddingVertical: SPACING.md,
+        marginHorizontal: SPACING.md,
+        borderRadius: BORDER_RADIUS.md,
+        elevation: 3,
+        shadowColor: COLORS.primary,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 6,
+    },
+    adminAddButtonText: { color: COLORS.white, fontSize: 15, fontWeight: '700' },
+    adminTag: {
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        borderRadius: 10,
+        padding: 2,
+    },
     statsRow: { flexDirection: 'row', justifyContent: 'space-between', gap: SPACING.sm, paddingHorizontal: SPACING.md },
     statCard: {
         flex: 1,

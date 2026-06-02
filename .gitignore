@@ -1,2 +1,27 @@
-node_modules
+# Dependencies
+node_modules/
+
+# Local environment
 .env
+
+# Expo local files
+.expo/
+
+# IDE/editor settings
+.idea/
+
+# Android build output and local keystore
+android/app/build/
+android/build/
+android/app/debug.keystore
+*.keystore
+
+# Local assets and generated resources
+android/app/src/main/assets/
+
+# Local database files and migrations
+dataBase.sql
+migrations/
+
+# Other local files
+*.log

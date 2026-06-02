@@ -1,5 +1,5 @@
-﻿import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, SafeAreaView, StyleSheet, View, Text } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import * as Linking from 'expo-linking';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -17,12 +17,32 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import SignInScreen from './src/screens/SignInScreen';
 import SignUpScreen from './src/screens/SignUpScreen';
 import LoadingScreen from './src/screens/LoadingScreen';
+
+// ========== RBAC: Novas telas admin ==========
+import CreateVehicleScreen from './src/screens/CreateVehicleScreen';
+import AdminTasksScreen from './src/screens/AdminTasksScreen';
+import AdminUsersScreen from './src/screens/AdminUsersScreen';
+
 import { supabase } from './src/services/supabase';
 import { fetchUserProfile } from './src/services/dbService';
 import { COLORS } from './src/theme';
 
+// ========== RBAC: Context Providers ==========
+import { AuthProvider, useAuth } from './src/contexts/AuthContext';
+import { RoleProvider, useRole } from './src/contexts/RoleContext';
+
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
+
+// ========== Fleet Stack: inclui tela de criar veiculo (protegida pelo AdminGuard interno) ==========
+function FleetStackScreen() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="FleetList" component={FleetScreen} />
+      <Stack.Screen name="CreateVehicle" component={CreateVehicleScreen} />
+    </Stack.Navigator>
+  );
+}
 
 function HomeStackScreen() {
   return (
@@ -35,10 +55,14 @@ function HomeStackScreen() {
   );
 }
 
-function AppTabs({ userRole }) {
+function AppTabs() {
+  const { profile } = useAuth();
+  const { isAdmin } = useRole();
+  const userRole = profile?.role ?? 'driver';
+
   return (
     <Tab.Navigator
-      initialRouteName={userRole === 'motorista' ? 'Home' : 'Fleet'}
+      initialRouteName={userRole === 'driver' ? 'Home' : 'Fleet'}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: COLORS.primary,
@@ -50,13 +74,39 @@ function AppTabs({ userRole }) {
           if (route.name === 'Fleet') iconName = 'car-outline';
           if (route.name === 'Tasks') iconName = 'clipboard-outline';
           if (route.name === 'Profile') iconName = 'person-outline';
+          // RBAC: icones admin
+          if (route.name === 'AdminTasks') iconName = 'clipboard-outline';
+          if (route.name === 'AdminUsers') iconName = 'people-outline';
           return <Ionicons name={iconName} size={size} color={color} />;
         },
       })}
     >
-      <Tab.Screen name="Home" component={HomeStackScreen} options={{ tabBarLabel: 'Início' }} />
-      <Tab.Screen name="Fleet" component={FleetScreen} options={{ tabBarLabel: 'Frota' }} />
-      <Tab.Screen name="Tasks" component={TasksScreen} options={{ tabBarLabel: 'Tarefas' }} />
+      <Tab.Screen name="Home" component={HomeStackScreen} options={{ tabBarLabel: 'Inicio' }} />
+      <Tab.Screen name="Fleet" component={FleetStackScreen} options={{ tabBarLabel: 'Frota' }} />
+
+      {/* ========== RBAC: Tabs condicionais para admin ========== */}
+      {isAdmin ? (
+        <>
+          <Tab.Screen
+            name="AdminTasks"
+            component={AdminTasksScreen}
+            options={{ tabBarLabel: 'Tarefas' }}
+          />
+          <Tab.Screen
+            name="AdminUsers"
+            component={AdminUsersScreen}
+            options={{
+              tabBarLabel: 'Usuarios',
+              tabBarIcon: ({ color, size }) => (
+                <Ionicons name="people-outline" size={size} color={color} />
+              ),
+            }}
+          />
+        </>
+      ) : (
+        <Tab.Screen name="Tasks" component={TasksScreen} options={{ tabBarLabel: 'Tarefas' }} />
+      )}
+
       <Tab.Screen name="Profile" component={ProfileScreen} options={{ tabBarLabel: 'Perfil' }} />
     </Tab.Navigator>
   );
@@ -71,64 +121,37 @@ function AuthStack() {
   );
 }
 
-export default function App() {
-  const [initializing, setInitializing] = useState(true);
-  const [session, setSession] = useState(null);
-  const [profile, setProfile] = useState(null);
+// ========== Componente interno que usa os contexts ==========
+function AppContent() {
+  const { session, profile, loading } = useAuth();
 
-  useEffect(() => {
-    let authSubscription;
-
-    const loadSession = async () => {
-      try {
-        const { data } = await supabase.auth.getSession();
-        setSession(data.session);
-        if (data.session?.user?.id) {
-          const userProfile = await fetchUserProfile(data.session.user.id);
-          setProfile(userProfile);
-        }
-      } catch (error) {
-        console.warn('Falha ao carregar sessão:', error.message || error);
-      } finally {
-        setInitializing(false);
-      }
-    };
-
-    loadSession();
-
-    authSubscription = supabase.auth.onAuthStateChange(async (_, sessionData) => {
-      setSession(sessionData);
-      if (sessionData?.user?.id) {
-        const userProfile = await fetchUserProfile(sessionData.user.id);
-        setProfile(userProfile);
-      } else {
-        setProfile(null);
-      }
-    });
-
-    return () => {
-      authSubscription?.subscription?.unsubscribe();
-    };
-  }, []);
-
-  if (initializing) {
+  if (loading) {
     return <LoadingScreen />;
   }
 
   return (
+    <NavigationContainer>
+      <StatusBar style="dark" />
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {session && profile ? (
+          <Stack.Screen name="Main" component={AppTabs} />
+        ) : (
+          <Stack.Screen name="Auth" component={AuthStack} />
+        )}
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+}
+
+// ========== App raiz: providers aninhados ==========
+export default function App() {
+  return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <NavigationContainer>
-        <StatusBar style="dark" />
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          {session && profile ? (
-            <Stack.Screen name="Main">
-              {() => <AppTabs userRole={profile.role ?? 'usuario'} />}
-            </Stack.Screen>
-          ) : (
-            <Stack.Screen name="Auth" component={AuthStack} />
-          )}
-        </Stack.Navigator>
-      </NavigationContainer>
+      <AuthProvider>
+        <RoleProvider>
+          <AppContent />
+        </RoleProvider>
+      </AuthProvider>
     </GestureHandlerRootView>
   );
 }

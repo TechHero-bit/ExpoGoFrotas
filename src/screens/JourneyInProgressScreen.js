@@ -31,8 +31,8 @@ export default function JourneyInProgressScreen({ navigation }) {
         setVehicle(currentVehicle);
 
         const updateDuration = () => {
-          if (!currentJourney.inicio) return;
-          const start = new Date(currentJourney.inicio);
+          if (!currentJourney.iniciado_em) return;
+          const start = new Date(currentJourney.iniciado_em);
           const seconds = Math.max(0, Math.floor((Date.now() - start.getTime()) / 1000));
           const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
           const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
