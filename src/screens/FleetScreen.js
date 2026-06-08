@@ -67,17 +67,25 @@ export default function FleetScreen({ navigation }) {
                 </View>
 
                 <AdminOnly>
-                    <TouchableOpacity
-                        style={styles.adminAddButton}
-                        onPress={() => navigation.navigate('CreateVehicle')}
-                        activeOpacity={0.85}
-                    >
-                        <Ionicons name="add-circle" size={20} color={COLORS.white} />
-                        <Text style={styles.adminAddButtonText}>Cadastrar Veiculo</Text>
-                        <View style={styles.adminTag}>
-                            <Ionicons name="shield-checkmark" size={12} color={COLORS.white} />
-                        </View>
-                    </TouchableOpacity>
+                    <View style={styles.adminActionsRow}>
+                        <TouchableOpacity
+                            style={styles.adminAddButton}
+                            onPress={() => navigation.navigate('CreateVehicle')}
+                            activeOpacity={0.85}
+                        >
+                            <Ionicons name="add-circle" size={20} color={COLORS.white} />
+                            <Text style={styles.adminAddButtonText}>Cadastrar</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.adminAddButton, styles.adminHistoryButton]}
+                            onPress={() => navigation.navigate('RideHistory')}
+                            activeOpacity={0.85}
+                        >
+                            <Ionicons name="list" size={20} color={COLORS.white} />
+                            <Text style={styles.adminAddButtonText}>Historico</Text>
+                        </TouchableOpacity>
+                    </View>
                 </AdminOnly>
 
                 <View style={styles.statsRow}>
@@ -136,14 +144,19 @@ const styles = StyleSheet.create({
     header: { gap: SPACING.xs, paddingTop: SPACING.md, paddingHorizontal: SPACING.md },
     title: { fontSize: 28, fontWeight: '800', color: COLORS.text },
     subtitle: { fontSize: 14, color: COLORS.textSecondary },
+    adminActionsRow: {
+        flexDirection: 'row',
+        paddingHorizontal: SPACING.md,
+        gap: SPACING.sm,
+    },
     adminAddButton: {
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
         gap: SPACING.sm,
         backgroundColor: COLORS.primary,
         paddingVertical: SPACING.md,
-        marginHorizontal: SPACING.md,
         borderRadius: BORDER_RADIUS.md,
         elevation: 3,
         shadowColor: COLORS.primary,
@@ -151,7 +164,11 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.25,
         shadowRadius: 6,
     },
-    adminAddButtonText: { color: COLORS.white, fontSize: 15, fontWeight: '700' },
+    adminHistoryButton: {
+        backgroundColor: '#4A5568', // A distinct color for history
+        shadowColor: '#4A5568',
+    },
+    adminAddButtonText: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
     adminTag: {
         backgroundColor: 'rgba(255,255,255,0.2)',
         borderRadius: 10,

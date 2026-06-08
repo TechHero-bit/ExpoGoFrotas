@@ -409,3 +409,29 @@ export async function finishJourney({ jornadaId, veiculoId, kmFinal, observacoes
     throw error;
   }
 }
+
+export async function fetchAllJourneys() {
+  const { data, error } = await supabase
+    .from('jornadas')
+    .select(`
+      id,
+      status,
+      origem,
+      destino,
+      iniciado_em,
+      encerrado_em,
+      km_inicial,
+      km_final,
+      motorista_id,
+      veiculo_id,
+      usuarios!motorista_id ( nome ),
+      veiculos!veiculo_id ( placa, modelo )
+    `)
+    .order('iniciado_em', { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+  
+  return data;
+}

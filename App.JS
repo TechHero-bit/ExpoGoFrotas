@@ -22,6 +22,8 @@ import LoadingScreen from './src/screens/LoadingScreen';
 import CreateVehicleScreen from './src/screens/CreateVehicleScreen';
 import AdminTasksScreen from './src/screens/AdminTasksScreen';
 import AdminUsersScreen from './src/screens/AdminUsersScreen';
+import RideHistoryScreen from './src/screens/RideHistoryScreen';
+import RideDetailsScreen from './src/screens/RideDetailsScreen';
 
 import { supabase } from './src/services/supabase';
 import { fetchUserProfile } from './src/services/dbService';
@@ -41,6 +43,8 @@ function FleetStackScreen() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="FleetList" component={FleetScreen} />
       <Stack.Screen name="CreateVehicle" component={CreateVehicleScreen} />
+      <Stack.Screen name="RideHistory" component={RideHistoryScreen} />
+      <Stack.Screen name="RideDetails" component={RideDetailsScreen} />
     </Stack.Navigator>
   );
 }
