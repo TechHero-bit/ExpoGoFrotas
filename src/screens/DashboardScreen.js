@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
     View,
     Text,
@@ -8,43 +8,70 @@ import {
     Image,
     ActivityIndicator,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 import { supabase } from '../services/supabase';
 import { fetchUserProfile, fetchDashboardMetrics } from '../services/dbService';
+import { useJourney } from '../contexts/JourneyContext';
 
 export default function DashboardScreen({ navigation }) {
     const [profile, setProfile] = useState(null);
     const [metrics, setMetrics] = useState({ disponiveis: 0, emRota: 0, manutencao: 0 });
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        const loadData = async () => {
-            try {
-                const userResponse = await supabase.auth.getUser();
-                console.log('[DEBUG LOGITRACK] DashboardScreen getUser response:', userResponse);
-                const userId = userResponse.data?.user?.id;
-                if (!userId) {
-                    return;
+    const { activeJourney, refreshJourney } = useJourney();
+
+    // useFocusEffect: recarrega dados toda vez que a tela ganha foco
+    useFocusEffect(
+        useCallback(() => {
+            let isActive = true;
+
+            const loadData = async () => {
+                try {
+                    setLoading(true);
+                    const userResponse = await supabase.auth.getUser();
+                    console.log('[DEBUG LOGITRACK] DashboardScreen getUser response:', userResponse);
+                    const userId = userResponse.data?.user?.id;
+                    if (!userId) {
+                        return;
+                    }
+
+                    const [userProfile, dashboardMetrics] = await Promise.all([
+                        fetchUserProfile(userId),
+                        fetchDashboardMetrics(),
+                        refreshJourney(),
+                    ]);
+
+                    if (isActive) {
+                        console.log('[DEBUG LOGITRACK] DashboardScreen loadData results:', { userId, userProfile, dashboardMetrics });
+                        setProfile(userProfile);
+                        setMetrics(dashboardMetrics);
+                    }
+                } catch (error) {
+                    console.warn('Erro ao carregar dashboard', error);
+                } finally {
+                    if (isActive) {
+                        setLoading(false);
+                    }
                 }
+            };
 
-                const [userProfile, dashboardMetrics] = await Promise.all([
-                    fetchUserProfile(userId),
-                    fetchDashboardMetrics(),
-                ]);
+            loadData();
 
-                console.log('[DEBUG LOGITRACK] DashboardScreen loadData results:', { userId, userProfile, dashboardMetrics });
-                setProfile(userProfile);
-                setMetrics(dashboardMetrics);
-            } catch (error) {
-                console.warn('Erro ao carregar dashboard', error);
-            } finally {
-                setLoading(false);
-            }
-        };
+            return () => {
+                isActive = false;
+            };
+        }, [refreshJourney])
+    );
 
-        loadData();
-    }, []);
+    const handleMainAction = () => {
+        if (activeJourney) {
+            navigation.navigate('JourneyInProgress');
+        } else {
+            navigation.navigate('VehicleCheckin');
+        }
+    };
 
     if (loading) {
         return (
@@ -73,19 +100,25 @@ export default function DashboardScreen({ navigation }) {
 
             <View style={styles.content}>
                 <TouchableOpacity
-                    style={styles.startButton}
-                    onPress={() => navigation.navigate('VehicleCheckin')}
+                    style={[styles.startButton, activeJourney && styles.activeJourneyButton]}
+                    onPress={handleMainAction}
                     activeOpacity={0.85}
                 >
-                    <Text style={styles.startButtonText}>INICIAR JORNADA</Text>
+                    <Text style={styles.startButtonText}>
+                        {activeJourney ? 'VER JORNADA ATUAL' : 'INICIAR JORNADA'}
+                    </Text>
                 </TouchableOpacity>
-                <Text style={styles.subtext}>Registre um novo check-in e libere o ve�culo para jornada.</Text>
+                <Text style={styles.subtext}>
+                    {activeJourney
+                        ? 'Você tem uma jornada em andamento. Toque para acompanhar.'
+                        : 'Registre um novo check-in e libere o veículo para jornada.'}
+                </Text>
             </View>
 
             <View style={styles.heroCard}>
                 <View style={styles.heroTextContainer}>
                     <Text style={styles.heroTitle}>Controle da sua frota</Text>
-                    <Text style={styles.heroSubtitle}>Acompanhe viagens, check-ins e a disponibilidade dos ve�culos em tempo real.</Text>
+                    <Text style={styles.heroSubtitle}>Acompanhe viagens, check-ins e a disponibilidade dos veículos em tempo real.</Text>
                 </View>
                 <Image
                     source={{ uri: 'https://images.unsplash.com/photo-1517530095992-4b4cc5a6ccc1?auto=format&fit=crop&w=900&q=80' }}
@@ -97,7 +130,7 @@ export default function DashboardScreen({ navigation }) {
                 <View style={styles.summaryCard}>
                     <Ionicons name="checkmark-circle-outline" size={22} color={COLORS.primary} />
                     <Text style={styles.summaryValue}>{metrics.disponiveis}</Text>
-                    <Text style={styles.summaryLabel}>Dispon�veis</Text>
+                    <Text style={styles.summaryLabel}>Disponíveis</Text>
                 </View>
                 <View style={styles.summaryCard}>
                     <Ionicons name="car-outline" size={22} color={COLORS.primary} />
@@ -107,18 +140,20 @@ export default function DashboardScreen({ navigation }) {
                 <View style={styles.summaryCard}>
                     <Ionicons name="construct-outline" size={22} color={COLORS.primary} />
                     <Text style={styles.summaryValue}>{metrics.manutencao}</Text>
-                    <Text style={styles.summaryLabel}>Manuten��o</Text>
+                    <Text style={styles.summaryLabel}>Manutenção</Text>
                 </View>
             </View>
 
             <View style={styles.actionsContainer}>
                 <TouchableOpacity
                     style={styles.actionButton}
-                    onPress={() => navigation.navigate('VehicleCheckin')}
+                    onPress={handleMainAction}
                     activeOpacity={0.85}
                 >
-                    <Ionicons name="car-sport-outline" size={20} color={COLORS.white} />
-                    <Text style={styles.actionButtonText}>Iniciar Check-in</Text>
+                    <Ionicons name={activeJourney ? 'navigate-outline' : 'car-sport-outline'} size={20} color={COLORS.white} />
+                    <Text style={styles.actionButtonText}>
+                        {activeJourney ? 'Acompanhar Jornada' : 'Iniciar Check-in'}
+                    </Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.85} onPress={() => navigation.navigate('Fleet')}>
                     <Text style={styles.secondaryButtonText}>Ver Frota</Text>
@@ -184,6 +219,9 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,
+    },
+    activeJourneyButton: {
+        backgroundColor: '#1B6B2E',
     },
     startButtonText: {
         color: COLORS.white,

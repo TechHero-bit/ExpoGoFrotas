@@ -30,6 +30,7 @@ import { COLORS } from './src/theme';
 // ========== RBAC: Context Providers ==========
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { RoleProvider, useRole } from './src/contexts/RoleContext';
+import { JourneyProvider } from './src/contexts/JourneyContext';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -149,7 +150,9 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
         <RoleProvider>
-          <AppContent />
+          <JourneyProvider>
+            <AppContent />
+          </JourneyProvider>
         </RoleProvider>
       </AuthProvider>
     </GestureHandlerRootView>

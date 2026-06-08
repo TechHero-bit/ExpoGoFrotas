@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, SafeAreaView, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
+import { useFocusEffect } from '@react-navigation/native';
 import { fetchVeiculos } from '../services/dbService';
 import { AdminOnly } from '../components/AdminGuard';
 
@@ -10,21 +11,36 @@ export default function FleetScreen({ navigation }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    useEffect(() => {
-        const loadVehicles = async () => {
-            try {
-                const data = await fetchVeiculos();
-                setVeiculos(data || []);
-            } catch (loadError) {
-                setError('Erro ao carregar veiculos.');
-                console.warn(loadError);
-            } finally {
-                setLoading(false);
-            }
-        };
+    useFocusEffect(
+        useCallback(() => {
+            let isActive = true;
 
-        loadVehicles();
-    }, []);
+            const loadVehicles = async () => {
+                try {
+                    setLoading(true);
+                    const data = await fetchVeiculos();
+                    if (isActive) {
+                        setVeiculos(data || []);
+                    }
+                } catch (loadError) {
+                    if (isActive) {
+                        setError('Erro ao carregar veículos.');
+                    }
+                    console.warn(loadError);
+                } finally {
+                    if (isActive) {
+                        setLoading(false);
+                    }
+                }
+            };
+
+            loadVehicles();
+
+            return () => {
+                isActive = false;
+            };
+        }, [])
+    );
 
     const countByStatus = (status) => veiculos.filter((vehicle) => vehicle.status === status).length;
 

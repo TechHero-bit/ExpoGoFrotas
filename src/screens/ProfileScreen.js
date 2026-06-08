@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, SafeAreaView, StyleSheet, Image, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
+import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 import { fetchUserProfile } from '../services/dbService';
 
@@ -10,35 +11,44 @@ export default function ProfileScreen() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    useEffect(() => {
-        const loadProfile = async () => {
-            try {
-                const userResponse = await supabase.auth.getUser();
-                console.log('[DEBUG LOGITRACK] ProfileScreen getUser response:', userResponse);
-                const userId = userResponse.data?.user?.id;
-                if (!userId) {
-                    setError('N�o foi poss�vel identificar o usu�rio.');
-                    return;
-                }
-                const userProfile = await fetchUserProfile(userId);
-                console.log('[DEBUG LOGITRACK] ProfileScreen fetchUserProfile result:', userProfile);
-                setProfile(userProfile);
-            } catch (loadError) {
-                setError('Falha ao carregar perfil.');
-                console.warn(loadError);
-            } finally {
-                setLoading(false);
-            }
-        };
+    useFocusEffect(
+        useCallback(() => {
+            let isActive = true;
 
-        loadProfile();
-    }, []);
+            const loadProfile = async () => {
+                try {
+                    setLoading(true);
+                    const userResponse = await supabase.auth.getUser();
+                    console.log('[DEBUG LOGITRACK] ProfileScreen getUser response:', userResponse);
+                    const userId = userResponse.data?.user?.id;
+                    if (!userId) {
+                        if (isActive) setError('Não foi possível identificar o usuário.');
+                        return;
+                    }
+                    const userProfile = await fetchUserProfile(userId);
+                    console.log('[DEBUG LOGITRACK] ProfileScreen fetchUserProfile result:', userProfile);
+                    if (isActive) setProfile(userProfile);
+                } catch (loadError) {
+                    if (isActive) setError('Falha ao carregar perfil.');
+                    console.warn(loadError);
+                } finally {
+                    if (isActive) setLoading(false);
+                }
+            };
+
+            loadProfile();
+
+            return () => {
+                isActive = false;
+            };
+        }, [])
+    );
 
     const handleSignOut = async () => {
         try {
             await supabase.auth.signOut();
         } catch (signOutError) {
-            Alert.alert('Erro', 'N�o foi poss�vel sair no momento. Tente novamente.');
+            Alert.alert('Erro', 'Não foi possível sair no momento. Tente novamente.');
             console.warn(signOutError);
         }
     };
@@ -72,7 +82,7 @@ export default function ProfileScreen() {
             </View>
 
             <View style={styles.card}>
-                <Text style={styles.cardTitle}>{profile?.nome || 'Usu�rio'}</Text>
+                <Text style={styles.cardTitle}>{profile?.nome || 'Usuário'}</Text>
                 <Text style={styles.cardSubtitle}>{profile?.role || 'Perfil'}</Text>
                 <View style={styles.infoRow}>
                     <Ionicons name="mail-outline" size={18} color={COLORS.primary} />
@@ -93,7 +103,7 @@ export default function ProfileScreen() {
                     </View>
                     <View style={styles.metricBlock}>
                         <Text style={styles.metricValue}>18</Text>
-                        <Text style={styles.metricLabel}>Viagens/M�s</Text>
+                        <Text style={styles.metricLabel}>Viagens/Mês</Text>
                     </View>
                 </View>
             </View>

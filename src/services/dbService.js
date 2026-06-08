@@ -336,6 +336,11 @@ export async function finishJourney({ jornadaId, veiculoId, kmFinal, observacoes
 
     const veiculoIdInt = parseInt(veiculoId) || veiculoId;
 
+    const parsedKm = Number(kmFinal);
+    if (isNaN(parsedKm) || parsedKm < 0) {
+      throw new Error('O valor de KM final informado é inválido. Apenas números são permitidos.');
+    }
+
     // ============================================
     // 1. INSERT NA TABELA CHECKOUTS
     // ============================================
@@ -345,7 +350,6 @@ export async function finishJourney({ jornadaId, veiculoId, kmFinal, observacoes
       {
         jornada_id: jornadaId,
         veiculo_id: veiculoIdInt,
-        km_final: Number(kmFinal),
         observacoes: observacoes || null,
         selfie_uri: selfieUrl || 'sem-imagem',
         foto_veiculo_uri: veiculoFotoUrl || 'sem-imagem',
@@ -355,7 +359,7 @@ export async function finishJourney({ jornadaId, veiculoId, kmFinal, observacoes
 
     if (checkoutError) {
       console.error('[ERRO PostgreSQL] Falha ao criar checkout:', checkoutError);
-      throw checkoutError;
+      throw new Error(`Erro de Banco (Checkout): ${checkoutError.message}`);
     }
 
     console.log('[LOGITRACK] Checkout registrado com sucesso.');
@@ -370,13 +374,13 @@ export async function finishJourney({ jornadaId, veiculoId, kmFinal, observacoes
       .update({ 
         status: 'Finalizada', 
         encerrado_em: new Date().toISOString(),
-        km_final: Number(kmFinal),
+        km_final: parsedKm,
       })
       .eq('id', jornadaId);
 
     if (jornadaError) {
       console.error('[ERRO PostgreSQL] Falha ao atualizar jornada:', jornadaError);
-      throw jornadaError;
+      throw new Error(`Erro de Banco (Jornada): ${jornadaError.message}`);
     }
 
     console.log('[LOGITRACK] Jornada finalizada com sucesso.');

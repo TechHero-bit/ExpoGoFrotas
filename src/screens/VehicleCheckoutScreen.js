@@ -16,6 +16,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 import { supabase } from '../services/supabase';
 import { fetchActiveJourney, fetchVeiculoById, finishJourney } from '../services/dbService';
+import { useJourney } from '../contexts/JourneyContext';
 
 export default function VehicleCheckoutScreen({ navigation }) {
   const [journey, setJourney] = useState(null);
@@ -27,6 +28,8 @@ export default function VehicleCheckoutScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  const { clearJourney } = useJourney();
 
   useEffect(() => {
     const loadJourney = async () => {
@@ -82,22 +85,34 @@ export default function VehicleCheckoutScreen({ navigation }) {
         throw new Error('Usuário não autenticado.');
       }
 
+      // 2. Validação e sanitização de Tipos (KM Final)
+      // Substitui vírgula por ponto para evitar erros de cast no backend (PostgreSQL)
+      const sanitizedKm = kmFinal.replace(',', '.');
+
       await finishJourney({
         jornadaId: journey.id,
         usuarioId,
         veiculoId: journey.veiculo_id,
-        kmFinal,
+        kmFinal: sanitizedKm,
         observacoes: observations,
         selfieUrl: selfieUri,
         veiculoFotoUrl: vehiclePhotoUri,
       });
 
+      await clearJourney();
+
       Alert.alert('Jornada finalizada', 'O encerramento da jornada foi registrado com sucesso.', [
         { text: 'OK', onPress: () => navigation.navigate('Dashboard') },
       ]);
     } catch (saveError) {
-      console.warn('Erro ao finalizar jornada', saveError);
-      setError('Erro ao encerrar a jornada. Tente novamente.');
+      // 3. Tratamento de Erros detalhado
+      // Log completo do erro para depuração no terminal do Expo
+      console.error('[VehicleCheckoutScreen] Erro ao finalizar jornada:', JSON.stringify(saveError, null, 2));
+      console.error('[VehicleCheckoutScreen] Mensagem do erro:', saveError.message);
+      
+      // Exibir o erro real vindo do backend/Supabase para facilitar diagnóstico
+      const errorMessage = saveError?.message || saveError?.details || 'Erro desconhecido ao encerrar a jornada.';
+      setError(`Falha: ${errorMessage}`);
     } finally {
       setSaving(false);
     }

@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, SafeAreaView, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
+import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 import { fetchTarefas } from '../services/dbService';
 
@@ -10,29 +11,38 @@ export default function TasksScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const loadTasks = async () => {
-      try {
-        const userResponse = await supabase.auth.getUser();
-        const userId = userResponse.data?.user?.id;
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
 
-        if (!userId) {
-          setError('Não foi possível identificar o usuário.');
-          return;
+      const loadTasks = async () => {
+        try {
+          setLoading(true);
+          const userResponse = await supabase.auth.getUser();
+          const userId = userResponse.data?.user?.id;
+
+          if (!userId) {
+            if (isActive) setError('Não foi possível identificar o usuário.');
+            return;
+          }
+
+          const lista = await fetchTarefas(userId);
+          if (isActive) setTasks(lista || []);
+        } catch (loadError) {
+          if (isActive) setError('Erro ao buscar tarefas.');
+          console.warn(loadError);
+        } finally {
+          if (isActive) setLoading(false);
         }
+      };
 
-        const lista = await fetchTarefas(userId);
-        setTasks(lista || []);
-      } catch (loadError) {
-        setError('Erro ao buscar tarefas.');
-        console.warn(loadError);
-      } finally {
-        setLoading(false);
-      }
-    };
+      loadTasks();
 
-    loadTasks();
-  }, []);
+      return () => {
+        isActive = false;
+      };
+    }, [])
+  );
 
   if (loading) {
     return (

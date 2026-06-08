@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
+import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 import { fetchActiveJourney, fetchVeiculoById } from '../services/dbService';
 
@@ -11,47 +12,62 @@ export default function JourneyInProgressScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [duration, setDuration] = useState('00:00:00');
 
-  useEffect(() => {
-    let interval;
+  useFocusEffect(
+    useCallback(() => {
+      let interval;
+      let isActive = true;
 
-    const loadJourney = async () => {
-      try {
-        const userResponse = await supabase.auth.getUser();
-        const usuarioId = userResponse.data?.user?.id;
-        if (!usuarioId) return;
+      const loadJourney = async () => {
+        try {
+          setLoading(true);
+          const userResponse = await supabase.auth.getUser();
+          const usuarioId = userResponse.data?.user?.id;
+          if (!usuarioId) return;
 
-        const currentJourney = await fetchActiveJourney(usuarioId);
-        if (!currentJourney) {
-          setJourney(null);
-          return;
+          const currentJourney = await fetchActiveJourney(usuarioId);
+          if (!currentJourney) {
+            if (isActive) {
+              setJourney(null);
+              setLoading(false);
+            }
+            return;
+          }
+
+          if (isActive) {
+            setJourney(currentJourney);
+          }
+          const currentVehicle = await fetchVeiculoById(currentJourney.veiculo_id);
+          if (isActive) {
+            setVehicle(currentVehicle);
+          }
+
+          const updateDuration = () => {
+            if (!currentJourney.iniciado_em) return;
+            const start = new Date(currentJourney.iniciado_em);
+            const seconds = Math.max(0, Math.floor((Date.now() - start.getTime()) / 1000));
+            const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
+            const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+            const s = String(seconds % 60).padStart(2, '0');
+            if (isActive) setDuration(`${h}:${m}:${s}`);
+          };
+
+          updateDuration();
+          interval = setInterval(updateDuration, 1000);
+        } catch (error) {
+          console.warn('Erro ao carregar jornada ativa', error);
+        } finally {
+          if (isActive) setLoading(false);
         }
+      };
 
-        setJourney(currentJourney);
-        const currentVehicle = await fetchVeiculoById(currentJourney.veiculo_id);
-        setVehicle(currentVehicle);
+      loadJourney();
 
-        const updateDuration = () => {
-          if (!currentJourney.iniciado_em) return;
-          const start = new Date(currentJourney.iniciado_em);
-          const seconds = Math.max(0, Math.floor((Date.now() - start.getTime()) / 1000));
-          const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
-          const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
-          const s = String(seconds % 60).padStart(2, '0');
-          setDuration(`${h}:${m}:${s}`);
-        };
-
-        updateDuration();
-        interval = setInterval(updateDuration, 1000);
-      } catch (error) {
-        console.warn('Erro ao carregar jornada ativa', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadJourney();
-    return () => clearInterval(interval);
-  }, []);
+      return () => {
+        isActive = false;
+        clearInterval(interval);
+      };
+    }, [])
+  );
 
   const handleFinish = () => {
     navigation.navigate('VehicleCheckout');

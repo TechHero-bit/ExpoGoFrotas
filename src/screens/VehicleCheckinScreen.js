@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,8 +14,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
+import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 import { fetchAvailableVeiculos, createJourneyAndCheckin } from '../services/dbService';
+import { useJourney } from '../contexts/JourneyContext';
 
 const FUEL_LEVELS = ['Reserva', '1/4', '1/2', '3/4', 'Cheio'];
 
@@ -32,21 +34,32 @@ export default function VehicleCheckinScreen({ navigation }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const loadVeiculos = async () => {
-      try {
-        const data = await fetchAvailableVeiculos();
-        setVeiculos(data || []);
-      } catch (loadError) {
-        console.warn('Erro ao carregar veículos disponíveis', loadError);
-        setError('Não foi possível carregar os veículos disponíveis.');
-      } finally {
-        setLoading(false);
-      }
-    };
+  const { refreshJourney } = useJourney();
 
-    loadVeiculos();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+
+      const loadVeiculos = async () => {
+        try {
+          setLoading(true);
+          const data = await fetchAvailableVeiculos();
+          if (isActive) setVeiculos(data || []);
+        } catch (loadError) {
+          console.warn('Erro ao carregar veículos disponíveis', loadError);
+          if (isActive) setError('Não foi possível carregar os veículos disponíveis.');
+        } finally {
+          if (isActive) setLoading(false);
+        }
+      };
+
+      loadVeiculos();
+
+      return () => {
+        isActive = false;
+      };
+    }, [])
+  );
 
   const pickImage = async (setter) => {
     const result = await ImagePicker.launchCameraAsync({
@@ -134,9 +147,10 @@ export default function VehicleCheckinScreen({ navigation }) {
       Alert.alert('✅ Sucesso!', 'Jornada iniciada com sucesso!', [
         {
           text: 'OK',
-          onPress: () => {
+          onPress: async () => {
             setSaving(false);
             setError(null);
+            await refreshJourney();
             navigation.navigate('JourneyInProgress');
           },
         },
