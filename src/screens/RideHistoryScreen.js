@@ -25,7 +25,7 @@ export default function RideHistoryScreen({ navigation }) {
                     }
                 } catch (loadError) {
                     if (isActive) {
-                        setError('Erro ao carregar o historico de corridas.');
+                        setError('Erro: ' + (loadError?.message || JSON.stringify(loadError)));
                     }
                     console.warn(loadError);
                 } finally {

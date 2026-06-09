@@ -1,11 +1,12 @@
-import React from 'react';
-import { View, Text, SafeAreaView, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, SafeAreaView, ScrollView, StyleSheet, TouchableOpacity, Image, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 import AdminGuard from '../components/AdminGuard';
 
 export default function RideDetailsScreen({ route, navigation }) {
     const { journey } = route.params || {};
+    const [selectedImage, setSelectedImage] = useState(null);
 
     if (!journey) {
         return (
@@ -38,6 +39,20 @@ export default function RideDetailsScreen({ route, navigation }) {
     if (journey.km_inicial !== undefined && journey.km_final !== undefined && journey.km_final !== null) {
         distPercorrida = `${(journey.km_final - journey.km_inicial).toFixed(1)} km`;
     }
+
+    // Lógica para fotos de check-in/out
+    const checkin = journey.checkins && journey.checkins.length > 0 ? journey.checkins[0] : null;
+    const checkout = journey.checkouts && journey.checkouts.length > 0 ? journey.checkouts[0] : null;
+    
+    // Verificamos se existem fotos reais (ignorando os fallbacks textuais 'sem-imagem' do banco)
+    const hasValidUrl = (url) => url && url !== 'sem-imagem' && typeof url === 'string' && url.length > 5;
+    
+    const checkinSelfie = hasValidUrl(checkin?.selfie_uri) ? checkin.selfie_uri : null;
+    const checkinPlaca = hasValidUrl(checkin?.foto_placa_uri) ? checkin.foto_placa_uri : null;
+    const checkoutSelfie = hasValidUrl(checkout?.selfie_uri) ? checkout.selfie_uri : null;
+    const checkoutVeiculo = hasValidUrl(checkout?.foto_veiculo_uri) ? checkout.foto_veiculo_uri : null;
+    
+    const hasAnyPhoto = checkinSelfie || checkinPlaca || checkoutSelfie || checkoutVeiculo;
 
     return (
         <AdminGuard navigation={navigation}>
@@ -133,7 +148,79 @@ export default function RideDetailsScreen({ route, navigation }) {
                         </View>
                     </View>
 
+                    {/* Fotos de Check-in */}
+                    {(checkinSelfie || checkinPlaca) && (
+                        <View style={styles.card}>
+                            <Text style={styles.sectionTitle}>Fotos do Check-in</Text>
+                            <View style={styles.photosRow}>
+                                {checkinSelfie && (
+                                    <View style={styles.photoContainer}>
+                                        <Text style={styles.label}>Motorista</Text>
+                                        <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(checkinSelfie)}>
+                                            <Image source={{ uri: checkinSelfie }} style={styles.photo} resizeMode="cover" />
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
+                                {checkinPlaca && (
+                                    <View style={styles.photoContainer}>
+                                        <Text style={styles.label}>Placa</Text>
+                                        <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(checkinPlaca)}>
+                                            <Image source={{ uri: checkinPlaca }} style={styles.photo} resizeMode="cover" />
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
+                            </View>
+                        </View>
+                    )}
+
+                    {/* Fotos de Check-out */}
+                    {(checkoutSelfie || checkoutVeiculo) && (
+                        <View style={styles.card}>
+                            <Text style={styles.sectionTitle}>Fotos do Check-out</Text>
+                            <View style={styles.photosRow}>
+                                {checkoutSelfie && (
+                                    <View style={styles.photoContainer}>
+                                        <Text style={styles.label}>Motorista</Text>
+                                        <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(checkoutSelfie)}>
+                                            <Image source={{ uri: checkoutSelfie }} style={styles.photo} resizeMode="cover" />
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
+                                {checkoutVeiculo && (
+                                    <View style={styles.photoContainer}>
+                                        <Text style={styles.label}>Veiculo</Text>
+                                        <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(checkoutVeiculo)}>
+                                            <Image source={{ uri: checkoutVeiculo }} style={styles.photo} resizeMode="cover" />
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
+                            </View>
+                        </View>
+                    )}
+
+                    {/* Fallback de Fotos */}
+                    {!hasAnyPhoto && (
+                        <View style={styles.card}>
+                            <Text style={styles.sectionTitle}>Registro Fotografico</Text>
+                            <View style={styles.noPhotosContainer}>
+                                <Ionicons name="images-outline" size={32} color={COLORS.gray500} />
+                                <Text style={styles.noPhotosText}>Nenhuma foto registrada para esta corrida.</Text>
+                            </View>
+                        </View>
+                    )}
+
                 </ScrollView>
+
+                <Modal visible={!!selectedImage} transparent={true} animationType="fade" onRequestClose={() => setSelectedImage(null)}>
+                    <View style={styles.modalContainer}>
+                        <TouchableOpacity style={styles.modalCloseButton} onPress={() => setSelectedImage(null)}>
+                            <Ionicons name="close" size={32} color="#FFF" />
+                        </TouchableOpacity>
+                        {selectedImage && (
+                            <Image source={{ uri: selectedImage }} style={styles.modalImage} resizeMode="contain" />
+                        )}
+                    </View>
+                </Modal>
             </SafeAreaView>
         </AdminGuard>
     );
@@ -267,5 +354,52 @@ const styles = StyleSheet.create({
     timelineContent: {
         flex: 1,
         paddingBottom: SPACING.md,
+    },
+    
+    // Fotos
+    photosRow: {
+        flexDirection: 'row',
+        gap: SPACING.md,
+        marginTop: SPACING.xs,
+    },
+    photoContainer: {
+        flex: 1,
+        gap: 4,
+    },
+    photo: {
+        width: '100%',
+        height: 140,
+        borderRadius: BORDER_RADIUS.sm,
+        backgroundColor: COLORS.gray100,
+    },
+    noPhotosContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: SPACING.lg,
+        gap: SPACING.sm,
+    },
+    noPhotosText: {
+        fontSize: 13,
+        color: COLORS.textSecondary,
+        textAlign: 'center',
+    },
+    
+    // Modal
+    modalContainer: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.9)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalCloseButton: {
+        position: 'absolute',
+        top: 50,
+        right: 20,
+        zIndex: 1,
+        padding: SPACING.sm,
+    },
+    modalImage: {
+        width: '100%',
+        height: '80%',
     },
 });

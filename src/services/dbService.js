@@ -411,7 +411,7 @@ export async function finishJourney({ jornadaId, veiculoId, kmFinal, observacoes
 }
 
 export async function fetchAllJourneys() {
-  const { data, error } = await supabase
+  const { data: jornadas, error } = await supabase
     .from('jornadas')
     .select(`
       id,
@@ -433,5 +433,29 @@ export async function fetchAllJourneys() {
     throw error;
   }
   
-  return data;
+  if (!jornadas || jornadas.length === 0) return [];
+
+  // Buscar checkins e checkouts manualmente para evitar erro de Foreign Key não configurada no DB
+  const jornadasIds = jornadas.map(j => j.id);
+  
+  const { data: checkins } = await supabase
+    .from('checkins')
+    .select('jornada_id, selfie_uri, foto_placa_uri')
+    .in('jornada_id', jornadasIds);
+    
+  const { data: checkouts } = await supabase
+    .from('checkouts')
+    .select('jornada_id, selfie_uri, foto_veiculo_uri')
+    .in('jornada_id', jornadasIds);
+
+  // Fazer o merge dos dados
+  const jornadasComFotos = jornadas.map(jornada => {
+    return {
+      ...jornada,
+      checkins: checkins ? checkins.filter(c => c.jornada_id === jornada.id) : [],
+      checkouts: checkouts ? checkouts.filter(c => c.jornada_id === jornada.id) : []
+    };
+  });
+
+  return jornadasComFotos;
 }
