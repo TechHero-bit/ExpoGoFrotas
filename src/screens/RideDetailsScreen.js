@@ -1,5 +1,14 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useState } from 'react';
-import { View, Text, SafeAreaView, ScrollView, StyleSheet, TouchableOpacity, Image, Modal } from 'react-native';
+import {
+    View,
+    Text,
+    ScrollView,
+    StyleSheet,
+    TouchableOpacity,
+    Image,
+    Modal
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 import AdminGuard from '../components/AdminGuard';

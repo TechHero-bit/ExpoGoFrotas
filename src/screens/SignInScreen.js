@@ -1,14 +1,14 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
+    View,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    StyleSheet,
+    KeyboardAvoidingView,
+    Platform,
+    Alert
 } from 'react-native';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 import { signIn } from '../services/authService';

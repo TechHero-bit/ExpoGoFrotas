@@ -1,5 +1,10 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React from 'react';
-import { SafeAreaView, StyleSheet, ActivityIndicator, Text } from 'react-native';
+import {
+    StyleSheet,
+    ActivityIndicator,
+    Text
+} from 'react-native';
 import { COLORS, SPACING } from '../theme';
 
 export default function LoadingScreen() {

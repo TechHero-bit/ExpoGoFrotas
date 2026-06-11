@@ -1,12 +1,12 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useState, useCallback } from 'react';
 import {
     View,
     Text,
     TouchableOpacity,
     StyleSheet,
-    SafeAreaView,
     Image,
-    ActivityIndicator,
+    ActivityIndicator
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';

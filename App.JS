@@ -5,6 +5,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import DashboardScreen from './src/screens/DashboardScreen';
@@ -64,6 +65,7 @@ function AppTabs() {
   const { profile } = useAuth();
   const { isAdmin } = useRole();
   const userRole = profile?.role ?? 'driver';
+  const insets = useSafeAreaInsets();
 
   return (
     <Tab.Navigator
@@ -72,7 +74,7 @@ function AppTabs() {
         headerShown: false,
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.gray500,
-        tabBarStyle: { height: 66, paddingBottom: 8, paddingTop: 8 },
+        tabBarStyle: { height: 66 + insets.bottom, paddingBottom: 8 + insets.bottom, paddingTop: 8 },
         tabBarIcon: ({ color, size }) => {
           let iconName = 'home-outline';
           if (route.name === 'Home') iconName = 'home-outline';
@@ -151,14 +153,16 @@ function AppContent() {
 // ========== App raiz: providers aninhados ==========
 export default function App() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <RoleProvider>
-          <JourneyProvider>
-            <AppContent />
-          </JourneyProvider>
-        </RoleProvider>
-      </AuthProvider>
-    </GestureHandlerRootView>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <AuthProvider>
+          <RoleProvider>
+            <JourneyProvider>
+              <AppContent />
+            </JourneyProvider>
+          </RoleProvider>
+        </AuthProvider>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }
