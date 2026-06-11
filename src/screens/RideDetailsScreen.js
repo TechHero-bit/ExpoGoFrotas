@@ -3,6 +3,7 @@ import { View, Text, SafeAreaView, ScrollView, StyleSheet, TouchableOpacity, Ima
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 import AdminGuard from '../components/AdminGuard';
+import { supabase } from '../services/supabase';
 
 export default function RideDetailsScreen({ route, navigation }) {
     const { journey } = route.params || {};
@@ -47,10 +48,23 @@ export default function RideDetailsScreen({ route, navigation }) {
     // Verificamos se existem fotos reais (ignorando os fallbacks textuais 'sem-imagem' do banco)
     const hasValidUrl = (url) => url && url !== 'sem-imagem' && typeof url === 'string' && url.length > 5;
     
-    const checkinSelfie = hasValidUrl(checkin?.selfie_uri) ? checkin.selfie_uri : null;
-    const checkinPlaca = hasValidUrl(checkin?.foto_placa_uri) ? checkin.foto_placa_uri : null;
-    const checkoutSelfie = hasValidUrl(checkout?.selfie_uri) ? checkout.selfie_uri : null;
-    const checkoutVeiculo = hasValidUrl(checkout?.foto_veiculo_uri) ? checkout.foto_veiculo_uri : null;
+    const resolveImageUrl = (pathOrUri) => {
+        if (!hasValidUrl(pathOrUri)) return null;
+        
+        // Se for URL web válida ou fallback de teste local, mantém
+        if (pathOrUri.startsWith('http') || pathOrUri.startsWith('file://') || pathOrUri.startsWith('content://')) {
+            return pathOrUri;
+        }
+        
+        // Se o banco salvar apenas o ID/Nome do arquivo, resolve com getPublicUrl
+        const { data } = supabase.storage.from('evidencias').getPublicUrl(pathOrUri);
+        return data.publicUrl;
+    };
+    
+    const checkinSelfie = resolveImageUrl(checkin?.selfie_uri);
+    const checkinPlaca = resolveImageUrl(checkin?.foto_placa_uri);
+    const checkoutSelfie = resolveImageUrl(checkout?.selfie_uri);
+    const checkoutVeiculo = resolveImageUrl(checkout?.foto_veiculo_uri);
     
     const hasAnyPhoto = checkinSelfie || checkinPlaca || checkoutSelfie || checkoutVeiculo;
 

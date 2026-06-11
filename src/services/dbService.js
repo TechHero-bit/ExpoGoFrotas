@@ -1,4 +1,44 @@
+import { Alert } from 'react-native';
 import { supabase } from './supabase';
+
+/**
+ * Função utilitária para fazer upload de imagens locais (file://) para o Supabase Storage
+ * e retornar a URL pública.
+ */
+async function uploadImageToSupabase(uri, prefix) {
+  if (!uri || uri === 'sem-imagem') return 'sem-imagem';
+
+  try {
+    const ext = uri.split('.').pop() || 'jpg';
+    const fileName = `${prefix}_${Date.now()}.${ext}`;
+    const filePath = `Imagens de check-in e check-out/${fileName}`;
+    
+    const formData = new FormData();
+    formData.append('file', {
+      uri: uri,
+      name: fileName,
+      type: `image/${ext === 'png' ? 'png' : 'jpeg'}`,
+    });
+
+    const { error } = await supabase.storage
+      .from('evidencias')
+      .upload(filePath, formData);
+
+    if (error) {
+      throw error;
+    }
+
+    const { data: publicData } = supabase.storage
+      .from('evidencias')
+      .getPublicUrl(filePath);
+
+    return publicData.publicUrl;
+  } catch (error) {
+    Alert.alert('Erro no Upload', error.message || 'Falha desconhecida ao fazer upload da imagem.');
+    return 'sem-imagem';
+  }
+}
+
 
 export async function fetchUserProfile(userId) {
   const { data, error, status } = await supabase
@@ -248,8 +288,12 @@ export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial,
     console.log('[LOGITRACK] Jornada criada com sucesso. ID:', jornada.id);
 
     // ============================================
-    // 3. INSERT NA TABELA CHECKINS
+    // 3. UPLOAD DE IMAGENS E INSERT NA TABELA CHECKINS
     // ============================================
+    console.log('[LOGITRACK] Realizando upload das fotos de check-in...');
+    const finalSelfieUrl = await uploadImageToSupabase(selfieUrl, `checkin_selfie_${jornada.id}`);
+    const finalPlacaUrl = await uploadImageToSupabase(placaUrl, `checkin_placa_${jornada.id}`);
+
     console.log('[LOGITRACK] Inserindo dados de check-in...');
 
     const { error: checkinError } = await supabase.from('checkins').insert([
@@ -258,8 +302,8 @@ export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial,
         veiculo_id: parseInt(veiculoIdStr) || veiculoIdStr,
         km: kmNumerico,
         nivel_combustivel: parseFloat(nivelCombustivel) || 0,
-        selfie_uri: selfieUrl || 'sem-imagem',
-        foto_placa_uri: placaUrl || 'sem-imagem',
+        selfie_uri: finalSelfieUrl,
+        foto_placa_uri: finalPlacaUrl,
         data_hora: new Date().toISOString(),
       },
     ]);
@@ -342,8 +386,12 @@ export async function finishJourney({ jornadaId, veiculoId, kmFinal, observacoes
     }
 
     // ============================================
-    // 1. INSERT NA TABELA CHECKOUTS
+    // 1. UPLOAD DE IMAGENS E INSERT NA TABELA CHECKOUTS
     // ============================================
+    console.log('[LOGITRACK] Realizando upload das fotos de check-out...');
+    const finalSelfieUrl = await uploadImageToSupabase(selfieUrl, `checkout_selfie_${jornadaId}`);
+    const finalVeiculoUrl = await uploadImageToSupabase(veiculoFotoUrl, `checkout_veiculo_${jornadaId}`);
+
     console.log('[LOGITRACK] Inserindo checkout...');
 
     const { error: checkoutError } = await supabase.from('checkouts').insert([
@@ -351,8 +399,8 @@ export async function finishJourney({ jornadaId, veiculoId, kmFinal, observacoes
         jornada_id: jornadaId,
         veiculo_id: veiculoIdInt,
         observacoes: observacoes || null,
-        selfie_uri: selfieUrl || 'sem-imagem',
-        foto_veiculo_uri: veiculoFotoUrl || 'sem-imagem',
+        selfie_uri: finalSelfieUrl,
+        foto_veiculo_uri: finalVeiculoUrl,
         data_hora: new Date().toISOString(),
       },
     ]);
