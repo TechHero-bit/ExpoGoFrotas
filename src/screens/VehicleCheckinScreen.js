@@ -1,5 +1,5 @@
 import { SafeAreaView } from 'react-native-safe-area-context';
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -18,6 +18,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 import { fetchAvailableVeiculos, createJourneyAndCheckin } from '../services/dbService';
 import { useJourney } from '../contexts/JourneyContext';
+import RouteMap from '../components/RouteMap';
+import { fetchRoute, resolveLocation } from '../services/osrmService';
+import * as Location from 'expo-location';
+import AddressAutocomplete from '../components/AddressAutocomplete';
 
 const FUEL_LEVELS = ['Reserva', '1/4', '1/2', '3/4', 'Cheio'];
 
@@ -25,8 +29,12 @@ export default function VehicleCheckinScreen({ navigation }) {
   const [veiculos, setVeiculos] = useState([]);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
   const [kmInicial, setKmInicial] = useState('');
-  const [origem, setOrigem] = useState('Depósito Central');
-  const [destino, setDestino] = useState('Centro de Distribuição Norte');
+  const [origem, setOrigem] = useState('');
+  const [destino, setDestino] = useState('');
+  
+  // Coordenadas resolvidas para passar ao RouteMap
+  const [resolvedOrigin, setResolvedOrigin] = useState(null);
+  const [resolvedDestination, setResolvedDestination] = useState(null);
   const [combustivel, setCombustivel] = useState('1/2');
   const [selfieUri, setSelfieUri] = useState(null);
   const [placaUri, setPlacaUri] = useState(null);
@@ -34,7 +42,38 @@ export default function VehicleCheckinScreen({ navigation }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
+  // ── Estado do Mapa / Rota ──
+  const [routeInfo, setRouteInfo] = useState(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const routeTimeoutRef = useRef(null);
+
   const { refreshJourney } = useJourney();
+
+  /**
+   * Calcula a rota entre Origem e Destino usando OSRM.
+   * Disparado automaticamente assim que resolvedOrigin e resolvedDestination forem definidos.
+   */
+  useEffect(() => {
+    if (!resolvedOrigin || !resolvedDestination) {
+      setRouteInfo(null);
+      return;
+    }
+
+    const fetchCurrentRoute = async () => {
+      try {
+        setRouteLoading(true);
+        const route = await fetchRoute(resolvedOrigin, resolvedDestination);
+        setRouteInfo(route);
+      } catch (routeError) {
+        console.warn('[VehicleCheckin] Erro ao calcular rota:', routeError.message);
+        setRouteInfo(null);
+      } finally {
+        setRouteLoading(false);
+      }
+    };
+
+    fetchCurrentRoute();
+  }, [resolvedOrigin, resolvedDestination]);
 
   useFocusEffect(
     useCallback(() => {
@@ -266,22 +305,39 @@ export default function VehicleCheckinScreen({ navigation }) {
         )}
 
         {selectedVehicle && (
-          <View style={styles.formCard}>
+          <View style={[styles.formCard, { zIndex: 2 }]}>
             <Text style={styles.formLabel}>Origem</Text>
-            <TextInput
-              value={origem}
-              onChangeText={setOrigem}
-              placeholder="Origem da jornada"
-              style={styles.input}
+            <AddressAutocomplete
+              placeholder="Digite o endereço de origem..."
+              style={{ zIndex: 3 }}
+              onSelect={(data) => {
+                setResolvedOrigin(data);
+                setOrigem(data ? data.label : '');
+              }}
             />
 
             <Text style={styles.formLabel}>Destino</Text>
-            <TextInput
-              value={destino}
-              onChangeText={setDestino}
-              placeholder="Destino da jornada"
-              style={styles.input}
+            <AddressAutocomplete
+              placeholder="Digite o endereço de destino..."
+              style={{ zIndex: 2 }}
+              onSelect={(data) => {
+                setResolvedDestination(data);
+                setDestino(data ? data.label : '');
+              }}
             />
+
+            {/* ── Mapa de Rota (Minimizado) ── */}
+            {(resolvedOrigin || resolvedDestination) && (
+              <RouteMap
+                origin={resolvedOrigin}
+                destination={resolvedDestination}
+                routeInfo={routeInfo}
+                loading={routeLoading}
+                initialMode="minimized"
+                isInteractive={false}
+                showUserLocation={false}
+              />
+            )}
 
             <Text style={styles.formLabel}>KM Inicial</Text>
             <TextInput

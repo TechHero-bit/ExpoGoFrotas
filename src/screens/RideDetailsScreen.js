@@ -1,5 +1,5 @@
 import { SafeAreaView } from 'react-native-safe-area-context';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -13,10 +13,37 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 import AdminGuard from '../components/AdminGuard';
 import { supabase } from '../services/supabase';
+import RouteMap from '../components/RouteMap';
+import { fetchRoute, resolveLocation } from '../services/osrmService';
 
 export default function RideDetailsScreen({ route, navigation }) {
     const { journey } = route.params || {};
     const [selectedImage, setSelectedImage] = useState(null);
+
+    // ── Estado do Mapa / Rota ──
+    const [routeInfo, setRouteInfo] = useState(null);
+    const [routeLoading, setRouteLoading] = useState(false);
+
+    // Calcular rota quando a tela carrega
+    useEffect(() => {
+        if (!journey?.origem || !journey?.destino) return;
+
+        const calcRoute = async () => {
+            try {
+                setRouteLoading(true);
+                const originCoord = resolveLocation(journey.origem, 'origin');
+                const destCoord = resolveLocation(journey.destino, 'destination');
+                const result = await fetchRoute(originCoord, destCoord);
+                setRouteInfo(result);
+            } catch (err) {
+                console.warn('[RideDetails] Erro ao calcular rota:', err.message);
+            } finally {
+                setRouteLoading(false);
+            }
+        };
+
+        calcRoute();
+    }, [journey?.origem, journey?.destino]);
 
     if (!journey) {
         return (
@@ -150,6 +177,19 @@ export default function RideDetailsScreen({ route, navigation }) {
                             </View>
                         </View>
                     </View>
+
+                    {/* Mapa Estático da Rota (Read-only) */}
+                    {journey.origem && journey.destino && (
+                        <RouteMap
+                            origin={{ ...resolveLocation(journey.origem, 'origin'), label: journey.origem }}
+                            destination={{ ...resolveLocation(journey.destino, 'destination'), label: journey.destino }}
+                            routeInfo={routeInfo}
+                            loading={routeLoading}
+                            initialMode="minimized"
+                            isInteractive={false}
+                            showUserLocation={false}
+                        />
+                    )}
 
                     {/* Odometro */}
                     <View style={styles.card}>

@@ -17,6 +17,8 @@ import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 import { supabase } from '../services/supabase';
 import { fetchActiveJourney, fetchVeiculoById, finishJourney } from '../services/dbService';
 import { useJourney } from '../contexts/JourneyContext';
+import RouteMap from '../components/RouteMap';
+import { fetchRoute, resolveLocation } from '../services/osrmService';
 
 export default function VehicleCheckoutScreen({ navigation }) {
   const [journey, setJourney] = useState(null);
@@ -28,6 +30,10 @@ export default function VehicleCheckoutScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  // ── Estado do Mapa / Rota ──
+  const [routeInfo, setRouteInfo] = useState(null);
+  const [routeLoading, setRouteLoading] = useState(false);
 
   const { clearJourney } = useJourney();
 
@@ -43,6 +49,21 @@ export default function VehicleCheckoutScreen({ navigation }) {
         if (currentJourney?.veiculo_id) {
           const currentVehicle = await fetchVeiculoById(currentJourney.veiculo_id);
           setVehicle(currentVehicle);
+        }
+
+        // ── Calcular rota concluída para exibição no mapa ──
+        if (currentJourney?.origem && currentJourney?.destino) {
+          try {
+            setRouteLoading(true);
+            const originCoord = resolveLocation(currentJourney.origem, 'origin');
+            const destCoord = resolveLocation(currentJourney.destino, 'destination');
+            const route = await fetchRoute(originCoord, destCoord);
+            setRouteInfo(route);
+          } catch (routeError) {
+            console.warn('[VehicleCheckout] Erro ao calcular rota:', routeError.message);
+          } finally {
+            setRouteLoading(false);
+          }
         }
       } catch (loadError) {
         console.warn('Erro ao carregar jornada', loadError);
@@ -142,6 +163,19 @@ export default function VehicleCheckoutScreen({ navigation }) {
           <Text style={styles.infoLabel}>Status da Jornada</Text>
           <Text style={styles.infoText}>{journey?.status ?? '---'}</Text>
         </View>
+
+        {/* ── Mapa de Rota Concluída (Minimizado, Read-only) ── */}
+        {journey?.origem && journey?.destino && (
+          <RouteMap
+            origin={{ ...resolveLocation(journey.origem, 'origin'), label: journey.origem }}
+            destination={{ ...resolveLocation(journey.destino, 'destination'), label: journey.destino }}
+            routeInfo={routeInfo}
+            loading={routeLoading}
+            initialMode="minimized"
+            isInteractive={false}
+            showUserLocation={false}
+          />
+        )}
 
         <View style={styles.card}>
           <Text style={styles.cardLabel}>KM Final</Text>

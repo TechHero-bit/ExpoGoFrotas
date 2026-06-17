@@ -14,7 +14,9 @@
       "bundleIdentifier": "com.logisticspro",
       "infoPlist": {
         "NSCameraUsageDescription": "O app precisa acessar a câmera para tirar fotos do veículo e selfie do técnico.",
-        "NSPhotoLibraryUsageDescription": "O app precisa acessar a galeria para selecionar fotos."
+        "NSPhotoLibraryUsageDescription": "O app precisa acessar a galeria para selecionar fotos.",
+        "NSLocationWhenInUseUsageDescription": "O app precisa acessar sua localização para mostrar sua posição no mapa durante a jornada.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "O app precisa acessar sua localização para rastrear sua posição durante a jornada."
       }
     },
     "android": {
@@ -22,7 +24,9 @@
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
       ]
     },
     "web": {
@@ -38,6 +42,14 @@
         "expo-image-picker",
         {
           "photosPermission": "O app precisa acessar a galeria."
+        }
+      ],
+      "@maplibre/maplibre-react-native",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "O app precisa acessar sua localização para rastrear sua posição durante a jornada.",
+          "locationWhenInUsePermission": "O app precisa acessar sua localização para mostrar sua posição no mapa."
         }
       ]
     ]
