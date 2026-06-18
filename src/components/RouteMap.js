@@ -112,8 +112,17 @@ export default function RouteMap({
   onCollapse,
 }) {
   const [isExpanded, setIsExpanded] = useState(initialMode === 'expanded');
+  const [mapReady, setMapReady] = useState(false);
   const cameraRef = useRef(null);
+  const mapLoadedRef = useRef(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  const handleMapLoaded = useCallback(() => {
+    if (!mapLoadedRef.current) {
+      mapLoadedRef.current = true;
+      setMapReady(true);
+    }
+  }, []);
 
   // Animação de entrada
   useEffect(() => {
@@ -124,20 +133,17 @@ export default function RouteMap({
     }).start();
   }, [fadeAnim]);
 
-  // Auto-zoom da rota
+  // Auto-zoom da rota e ajuste ao expandir
   useEffect(() => {
-    if (routeInfo && cameraRef.current) {
-      const timeoutId = setTimeout(() => {
-        const bounds = getBounds();
-        if (bounds && cameraRef.current) {
-          const sw = bounds[0];
-          const ne = bounds[1];
-          cameraRef.current.fitBounds(ne, sw, 60, 1000);
-        }
-      }, 300);
-      return () => clearTimeout(timeoutId);
+    if (!routeInfo || !cameraRef.current || !mapReady) return;
+
+    const bounds = getBounds();
+    if (bounds) {
+      const sw = bounds[0];
+      const ne = bounds[1];
+      cameraRef.current.fitBounds(ne, sw, 50, 800);
     }
-  }, [routeInfo, isExpanded]);
+  }, [routeInfo, mapReady, getBounds, isExpanded]);
 
   /**
    * Calcula os bounds para encaixar origem e destino no mapa.
@@ -225,6 +231,8 @@ export default function RouteMap({
         rotateEnabled={false}
         pitchEnabled={false}
         onPress={handleMapPress}
+        onMapLoaded={handleMapLoaded}
+        onDidFinishLoadingMap={handleMapLoaded}
       >
         {/* Camera — encaixa nos bounds da rota */}
         {bounds ? (

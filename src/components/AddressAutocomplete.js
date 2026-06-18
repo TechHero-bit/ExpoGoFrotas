@@ -9,25 +9,68 @@ export default function AddressAutocomplete({ placeholder, onSelect, style }) {
   const [loading, setLoading] = useState(false);
   const [showList, setShowList] = useState(false);
   const debounceTimeout = useRef(null);
+  const LOCATIONIQ_TOKEN = 'pk.2bd751445ee7150a339d49346a83657a';
+
+  const formatLocationIQAddress = (address = {}, rawName = '') => {
+    const street = address.road || address.pedestrian || address.footway || address.cycleway || address.highway || address.neighbourhood || address.suburb || address.village || address.city_district || address.town || address.city;
+    const houseNumber = address.house_number;
+    const neighborhood = address.suburb || address.neighbourhood || address.village || address.district || address.city_district || address.county;
+    const city = address.city || address.town || address.village || address.county || address.state;
+
+    if (!street && !city) {
+      return rawName ? rawName.split(',').slice(0, 3).join(', ') : '';
+    }
+
+    const streetPart = street ? street : 'Endereço';
+    const hasNeighborhood = Boolean(neighborhood);
+    const hasCity = Boolean(city);
+    const streetSegment = houseNumber ? `${streetPart}, ${houseNumber}` : streetPart;
+
+    if (hasNeighborhood && hasCity) {
+      return `${streetSegment} - ${neighborhood}, ${city}`;
+    }
+
+    if (hasNeighborhood) {
+      return `${streetSegment} - ${neighborhood}`;
+    }
+
+    if (hasCity) {
+      return `${streetSegment} - ${city}`;
+    }
+
+    return streetSegment;
+  };
+
+  const sortSuggestions = (items) => {
+    return items.sort((a, b) => {
+      const aHasNumber = a.address?.house_number ? 0 : 1;
+      const bHasNumber = b.address?.house_number ? 0 : 1;
+      if (aHasNumber !== bHasNumber) return aHasNumber - bHasNumber;
+      return a.label.localeCompare(b.label);
+    });
+  };
 
   const fetchSuggestions = async (text) => {
     if (text.length < 3) {
       setSuggestions([]);
       return;
     }
-    
+
     setLoading(true);
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&limit=5`, {
-        headers: {
-          'Accept-Language': 'pt-BR,pt;q=0.9',
-          'User-Agent': 'LogiTrackApp/1.0'
-        }
-      });
+      const response = await fetch(`https://api.locationiq.com/v1/autocomplete.php?key=${LOCATIONIQ_TOKEN}&q=${encodeURIComponent(text)}&countrycodes=br&limit=5&addressdetails=1&format=json`);
       const data = await response.json();
-      setSuggestions(data);
+      const items = Array.isArray(data) ? data : [];
+      const parsed = items.map((item) => ({
+        ...item,
+        label: formatLocationIQAddress(item.address, item.display_name),
+        latitude: Number(item.lat),
+        longitude: Number(item.lon),
+      }));
+      setSuggestions(sortSuggestions(parsed).slice(0, 5));
     } catch (error) {
-      console.warn('[Autocomplete Error]', error);
+      // Ignored error to prevent console logs as requested
+      setSuggestions([]);
     } finally {
       setLoading(false);
     }
@@ -36,24 +79,24 @@ export default function AddressAutocomplete({ placeholder, onSelect, style }) {
   const handleTextChange = (text) => {
     setQuery(text);
     setShowList(true);
-    
+
     if (debounceTimeout.current) {
       clearTimeout(debounceTimeout.current);
     }
-    
+
     debounceTimeout.current = setTimeout(() => {
       fetchSuggestions(text);
     }, 600);
   };
 
   const handleSelect = (item) => {
-    setQuery(item.display_name);
+    setQuery(item.label || '');
     setShowList(false);
     Keyboard.dismiss();
     onSelect({
-      label: item.display_name,
-      latitude: parseFloat(item.lat),
-      longitude: parseFloat(item.lon)
+      label: item.label || '',
+      latitude: item.latitude,
+      longitude: item.longitude,
     });
   };
 
@@ -88,13 +131,13 @@ export default function AddressAutocomplete({ placeholder, onSelect, style }) {
         <View style={styles.dropdown}>
           <FlatList
             data={suggestions}
-            keyExtractor={(item) => item.place_id.toString()}
+            keyExtractor={(item) => item.place_id?.toString() || `${item.lat}-${item.lon}`}
             keyboardShouldPersistTaps="handled"
             renderItem={({ item }) => (
               <TouchableOpacity style={styles.item} onPress={() => handleSelect(item)}>
                 <Ionicons name="location-outline" size={20} color={COLORS.textSecondary} />
                 <Text style={styles.itemText} numberOfLines={2}>
-                  {item.display_name}
+                  {item.label}
                 </Text>
               </TouchableOpacity>
             )}
