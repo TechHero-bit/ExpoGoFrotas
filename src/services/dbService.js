@@ -1,41 +1,60 @@
 import { Alert } from 'react-native';
+import { decode } from 'base64-arraybuffer';
 import { supabase } from './supabase';
 
 /**
- * Função utilitária para fazer upload de imagens locais (file://) para o Supabase Storage
- * e retornar a URL pública.
+ * Função utilitária para fazer upload de imagens para o Supabase Storage
+ * usando ArrayBuffer (mais estável no React Native que FormData).
  */
-async function uploadImageToSupabase(uri, prefix) {
-  if (!uri || uri === 'sem-imagem') return 'sem-imagem';
+async function uploadImageToSupabase(imageAsset, prefix) {
+  if (!imageAsset || !imageAsset.uri || imageAsset.uri === 'sem-imagem') {
+    return null;
+  }
 
   try {
+    const { uri, base64 } = imageAsset;
     const ext = uri.split('.').pop() || 'jpg';
     const fileName = `${prefix}_${Date.now()}.${ext}`;
     const filePath = `Imagens de check-in e check-out/${fileName}`;
-    
-    const formData = new FormData();
-    formData.append('file', {
-      uri: uri,
-      name: fileName,
-      type: `image/${ext === 'png' ? 'png' : 'jpeg'}`,
-    });
+    const contentType = `image/${ext === 'png' ? 'png' : 'jpeg'}`;
 
-    const { error } = await supabase.storage
-      .from('evidencias')
-      .upload(filePath, formData);
+    console.log(`[LOGITRACK] Iniciando upload: ${fileName} (${contentType})`);
 
-    if (error) {
-      throw error;
+    let uploadData;
+
+    if (base64) {
+      // Método robusto: ArrayBuffer via base64
+      uploadData = decode(base64);
+    } else {
+      // Fallback: Blob via fetch (se base64 não estiver disponível)
+      const response = await fetch(uri);
+      uploadData = await response.blob();
     }
 
-    const { data: publicData } = supabase.storage
+    const { error: uploadError } = await supabase.storage
+      .from('evidencias')
+      .upload(filePath, uploadData, {
+        contentType: contentType,
+        upsert: true
+      });
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const { data: publicData, error: publicUrlError } = await supabase.storage
       .from('evidencias')
       .getPublicUrl(filePath);
 
-    return publicData.publicUrl;
+    if (publicUrlError || !publicData?.publicUrl) {
+      throw publicUrlError || new Error('Falha ao obter a URL pública da imagem.');
+    }
+
+    console.log(`[LOGITRACK] Upload concluído: ${publicData.publicUrl}`);
+    return { publicUrl: publicData.publicUrl, path: filePath };
   } catch (error) {
-    Alert.alert('Erro no Upload', error.message || 'Falha desconhecida ao fazer upload da imagem.');
-    return 'sem-imagem';
+    console.error('[UPLOAD SUPABASE] Falha ao enviar imagem:', error);
+    throw new Error(error.message || 'Falha ao enviar imagem para o storage.');
   }
 }
 
@@ -182,7 +201,7 @@ export async function fetchVeiculoById(veiculoId) {
   return dataSingle;
 }
 
-export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial, nivelCombustivel, selfieUrl, placaUrl, origem, destino }) {
+export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial, nivelCombustivel, selfieUrl, placaUrl, painelUrl, origem, destino }) {
   try {
     // ============================================
     // 1. VALIDAÇÃO DE ENTRADA
@@ -191,6 +210,8 @@ export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial,
       usuarioId,
       veiculoId,
       kmInicial,
+      nivelCombustivel,
+      painelUrl,
       origem,
       destino,
     });
@@ -236,6 +257,22 @@ export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial,
     // 2. INSERT NA TABELA JORNADAS
     // ============================================
     console.log('[LOGITRACK] Inserindo nova jornada no banco de dados...');
+
+    // Verificar se já existe uma jornada em andamento para este veículo
+    const { data: existingActive, error: existingError } = await supabase
+      .from('jornadas')
+      .select('id')
+      .eq('veiculo_id', parseInt(veiculoIdStr) || veiculoIdStr)
+      .eq('status', 'Em andamento')
+      .limit(1);
+
+    if (existingError) {
+      console.warn('[LOGITRACK] Aviso ao verificar jornada ativa:', existingError.message || existingError);
+    }
+
+    if (existingActive && existingActive.length) {
+      throw new Error('Já existe uma jornada em andamento para este veículo.');
+    }
 
     const agora = new Date().toISOString();
     const { data: jornada, error: jornadaError } = await supabase
@@ -289,41 +326,93 @@ export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial,
 
     // ============================================
     // 3. UPLOAD DE IMAGENS E INSERT NA TABELA CHECKINS
+    //     Fazemos upload e, em caso de falha subsequente, removemos arquivos e a jornada criada
     // ============================================
     console.log('[LOGITRACK] Realizando upload das fotos de check-in...');
-    const finalSelfieUrl = await uploadImageToSupabase(selfieUrl, `checkin_selfie_${jornada.id}`);
-    const finalPlacaUrl = await uploadImageToSupabase(placaUrl, `checkin_placa_${jornada.id}`);
 
-    console.log('[LOGITRACK] Inserindo dados de check-in...');
+    const uploadedPaths = [];
+    try {
+      const selfieUpload = selfieUrl ? await uploadImageToSupabase(selfieUrl, `checkin_selfie_${jornada.id}`) : null;
+      const placaUpload = placaUrl ? await uploadImageToSupabase(placaUrl, `checkin_placa_${jornada.id}`) : null;
+      const painelUpload = painelUrl ? await uploadImageToSupabase(painelUrl, `checkin_painel_${jornada.id}`) : null;
 
-    const { error: checkinError } = await supabase.from('checkins').insert([
-      {
-        jornada_id: jornada.id,
-        veiculo_id: parseInt(veiculoIdStr) || veiculoIdStr,
-        km: kmNumerico,
-        nivel_combustivel: parseFloat(nivelCombustivel) || 0,
-        selfie_uri: finalSelfieUrl,
-        foto_placa_uri: finalPlacaUrl,
-        data_hora: new Date().toISOString(),
-      },
-    ]);
+      const finalSelfieUrl = selfieUpload ? selfieUpload.publicUrl : null;
+      const finalPlacaUrl = placaUpload ? placaUpload.publicUrl : null;
+      const finalPainelUrl = painelUpload ? painelUpload.publicUrl : null;
 
-    if (checkinError) {
-      const errorDetails = {
-        message: checkinError.message,
-        code: checkinError.code,
-        details: checkinError.details,
-        hint: checkinError.hint,
-      };
-      console.error('[ERRO PostgreSQL] Falha ao criar check-in:', errorDetails);
+      if (selfieUpload && selfieUpload.path) uploadedPaths.push(selfieUpload.path);
+      if (placaUpload && placaUpload.path) uploadedPaths.push(placaUpload.path);
+      if (painelUpload && painelUpload.path) uploadedPaths.push(painelUpload.path);
 
-      // Se checkin falhar, a jornada já foi criada mas sem check-in associado (inconsistência)
-      console.warn('[AVISO] Jornada foi criada mas check-in falhou. Estado inconsistente para jornada ID:', jornada.id);
+      console.log('[LOGITRACK] Inserindo dados de check-in...');
 
-      throw new Error(`Erro ao registrar check-in: ${checkinError.message}`);
+      const { error: checkinError } = await supabase.from('checkins').insert([
+        {
+          jornada_id: jornada.id,
+          veiculo_id: parseInt(veiculoIdStr) || veiculoIdStr,
+          km: kmNumerico,
+          nivel_combustivel: nivel_combustivel.trim(),
+          selfie_uri: finalSelfieUrl,
+          foto_placa_uri: finalPlacaUrl,
+          foto_painel_uri: finalPainelUrl,
+          data_hora: new Date().toISOString(),
+        },
+      ]);
+
+      if (checkinError) {
+        const errorDetails = {
+          message: checkinError.message,
+          code: checkinError.code,
+          details: checkinError.details,
+          hint: checkinError.hint,
+        };
+        console.error('[ERRO PostgreSQL] Falha ao criar check-in:', errorDetails);
+
+        // Se checkin falhar, faremos limpeza: remover arquivos enviados e excluir a jornada criada
+        if (uploadedPaths.length) {
+          try {
+            await supabase.storage.from('evidencias').remove(uploadedPaths);
+            console.log('[LOGITRACK] Arquivos enviados removidos após falha no check-in.');
+          } catch (remErr) {
+            console.warn('[LOGITRACK] Falha ao remover arquivos após erro no check-in:', remErr.message || remErr);
+          }
+        }
+
+        try {
+          await supabase.from('jornadas').delete().eq('id', jornada.id);
+          console.log('[LOGITRACK] Jornada criada removida após falha no check-in.');
+        } catch (delErr) {
+          console.warn('[LOGITRACK] Falha ao remover jornada após erro no check-in:', delErr.message || delErr);
+        }
+
+        throw new Error(`Erro ao registrar check-in: ${checkinError.message}`);
+      }
+
+      console.log('[LOGITRACK] Check-in registrado com sucesso.');
+    } catch (uploadOrInsertError) {
+      // Se qualquer erro ocorrer durante upload ou insert, tentamos limpar o que foi parcial
+      console.error('[LOGITRACK] Erro durante upload/inserção de check-in, realizando limpeza:', uploadOrInsertError.message || uploadOrInsertError);
+
+      if (uploadedPaths.length) {
+        try {
+          await supabase.storage.from('evidencias').remove(uploadedPaths);
+          console.log('[LOGITRACK] Arquivos enviados removidos no rollback.');
+        } catch (remErr) {
+          console.warn('[LOGITRACK] Falha ao remover arquivos no rollback:', remErr.message || remErr);
+        }
+      }
+
+      try {
+        if (jornada && jornada.id) {
+          await supabase.from('jornadas').delete().eq('id', jornada.id);
+          console.log('[LOGITRACK] Jornada criada removida no rollback.');
+        }
+      } catch (delErr) {
+        console.warn('[LOGITRACK] Falha ao remover jornada no rollback:', delErr.message || delErr);
+      }
+
+      throw uploadOrInsertError;
     }
-
-    console.log('[LOGITRACK] Check-in registrado com sucesso.');
 
     // ============================================
     // 4. ATUALIZAR STATUS DO VEÍCULO
@@ -389,8 +478,10 @@ export async function finishJourney({ jornadaId, veiculoId, kmFinal, observacoes
     // 1. UPLOAD DE IMAGENS E INSERT NA TABELA CHECKOUTS
     // ============================================
     console.log('[LOGITRACK] Realizando upload das fotos de check-out...');
-    const finalSelfieUrl = await uploadImageToSupabase(selfieUrl, `checkout_selfie_${jornadaId}`);
-    const finalVeiculoUrl = await uploadImageToSupabase(veiculoFotoUrl, `checkout_veiculo_${jornadaId}`);
+    const selfieUpload = await uploadImageToSupabase(selfieUrl, `checkout_selfie_${jornadaId}`);
+    const veiculoUpload = await uploadImageToSupabase(veiculoFotoUrl, `checkout_veiculo_${jornadaId}`);
+    const finalSelfieUrl = selfieUpload ? selfieUpload.publicUrl : null;
+    const finalVeiculoUrl = veiculoUpload ? veiculoUpload.publicUrl : null;
 
     console.log('[LOGITRACK] Inserindo checkout...');
 

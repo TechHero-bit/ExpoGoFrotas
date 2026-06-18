@@ -19,11 +19,8 @@ import { supabase } from '../services/supabase';
 import { fetchAvailableVeiculos, createJourneyAndCheckin } from '../services/dbService';
 import { useJourney } from '../contexts/JourneyContext';
 import RouteMap from '../components/RouteMap';
-import { fetchRoute, resolveLocation } from '../services/osrmService';
-import * as Location from 'expo-location';
+import { fetchRoute } from '../services/osrmService';
 import AddressAutocomplete from '../components/AddressAutocomplete';
-
-const FUEL_LEVELS = ['Reserva', '1/4', '1/2', '3/4', 'Cheio'];
 
 export default function VehicleCheckinScreen({ navigation }) {
   const [veiculos, setVeiculos] = useState([]);
@@ -35,9 +32,10 @@ export default function VehicleCheckinScreen({ navigation }) {
   // Coordenadas resolvidas para passar ao RouteMap
   const [resolvedOrigin, setResolvedOrigin] = useState(null);
   const [resolvedDestination, setResolvedDestination] = useState(null);
-  const [combustivel, setCombustivel] = useState('1/2');
+  const [combustivel, setCombustivel] = useState('');
   const [selfieUri, setSelfieUri] = useState(null);
   const [placaUri, setPlacaUri] = useState(null);
+  const [painelUri, setPainelUri] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -101,13 +99,21 @@ export default function VehicleCheckinScreen({ navigation }) {
   );
 
   const pickImage = async (setter) => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permissão negada', 'Preciso de acesso à câmera para tirar a foto do painel.');
+      return;
+    }
+
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       quality: 0.7,
+      base64: true,
     });
 
     if (!result.canceled) {
-      setter(result.assets[0].uri);
+      const asset = result.assets[0];
+      setter({ uri: asset.uri, base64: asset.base64 });
     }
   };
 
@@ -139,6 +145,11 @@ export default function VehicleCheckinScreen({ navigation }) {
 
     if (!destino.trim()) {
       Alert.alert('⚠️ Destino obrigatório', 'Informe para onde a jornada irá.');
+      return;
+    }
+
+    if (!combustivel.trim()) {
+      Alert.alert('⚠️ Nível de combustível obrigatório', 'Informe o nível de combustível do veículo.');
       return;
     }
 
@@ -174,6 +185,7 @@ export default function VehicleCheckinScreen({ navigation }) {
         nivelCombustivel: combustivel,
         selfieUrl: selfieUri,
         placaUrl: placaUri,
+        painelUrl: painelUri,
         origem: origem.trim(),
         destino: destino.trim(),
       });
@@ -349,26 +361,38 @@ export default function VehicleCheckinScreen({ navigation }) {
             />
 
             <Text style={styles.formLabel}>Nível de Combustível</Text>
-            <View style={styles.fuelRow}>
-              {FUEL_LEVELS.map((level) => (
-                <TouchableOpacity
-                  key={level}
-                  style={[styles.fuelOption, combustivel === level && styles.fuelOptionActive]}
-                  onPress={() => setCombustivel(level)}
-                >
-                  <Text style={[styles.fuelOptionText, combustivel === level && styles.fuelOptionTextActive]}>{level}</Text>
-                </TouchableOpacity>
-              ))}
+            <TextInput
+              value={combustivel}
+              onChangeText={setCombustivel}
+              placeholder="Ex: 3/4, 70%, tanque cheio"
+              style={styles.input}
+            />
+
+            <Text style={styles.formLabel}>Foto do Painel</Text>
+            <View style={styles.panelPhotoRow}>
+              <TouchableOpacity style={styles.photoButton} onPress={() => pickImage(setPainelUri)} activeOpacity={0.85}>
+                <Ionicons name="camera-outline" size={18} color={COLORS.white} />
+                <Text style={styles.photoButtonText}>Tirar Foto do Painel</Text>
+              </TouchableOpacity>
             </View>
+
+            {painelUri ? (
+              <View style={styles.panelPreviewWrapper}>
+                <Image source={{ uri: painelUri.uri }} style={styles.panelPreview} resizeMode="cover" />
+                <TouchableOpacity style={styles.panelRemoveButton} onPress={() => setPainelUri(null)} activeOpacity={0.8}>
+                  <Ionicons name="close-circle" size={24} color={COLORS.white} />
+                </TouchableOpacity>
+              </View>
+            ) : null}
 
             <Text style={styles.formLabel}>Comprovante</Text>
             <View style={styles.photoPickerRow}>
               <TouchableOpacity style={styles.photoCard} onPress={() => pickImage(setSelfieUri)} activeOpacity={0.85}>
-                {selfieUri ? <Image source={{ uri: selfieUri }} style={styles.photoPreview} /> : <Ionicons name="camera-outline" size={28} color={COLORS.gray500} />}
+                {selfieUri ? <Image source={{ uri: selfieUri.uri }} style={styles.photoPreview} /> : <Ionicons name="camera-outline" size={28} color={COLORS.gray500} />}
                 <Text style={styles.photoLabel}>Selfie</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.photoCard} onPress={() => pickImage(setPlacaUri)} activeOpacity={0.85}>
-                {placaUri ? <Image source={{ uri: placaUri }} style={styles.photoPreview} /> : <Ionicons name="car-outline" size={28} color={COLORS.gray500} />}
+                {placaUri ? <Image source={{ uri: placaUri.uri }} style={styles.photoPreview} /> : <Ionicons name="car-outline" size={28} color={COLORS.gray500} />}
                 <Text style={styles.photoLabel}>Placa</Text>
               </TouchableOpacity>
             </View>
@@ -376,10 +400,10 @@ export default function VehicleCheckinScreen({ navigation }) {
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
             <TouchableOpacity
-              style={[styles.confirmBtn, (!kmInicial.trim() || saving) && styles.btnDisabled]}
+              style={[styles.confirmBtn, (!kmInicial.trim() || !combustivel.trim() || saving) && styles.btnDisabled]}
               onPress={handleConfirm}
               activeOpacity={0.85}
-              disabled={!kmInicial.trim() || saving}
+              disabled={!kmInicial.trim() || !combustivel.trim() || saving}
             >
               <Text style={styles.confirmBtnText}>{saving ? 'Iniciando...' : 'Confirmar Check-in'}</Text>
             </TouchableOpacity>
@@ -459,6 +483,35 @@ const styles = StyleSheet.create({
   },
   photoLabel: { fontSize: 12, color: COLORS.textSecondary },
   photoPreview: { width: '100%', height: 120, borderRadius: BORDER_RADIUS.md },
+  panelPhotoRow: { marginTop: SPACING.sm },
+  photoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.primary,
+  },
+  photoButtonText: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
+  panelPreviewWrapper: {
+    position: 'relative',
+    marginTop: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  panelPreview: { width: '100%', height: 180, backgroundColor: COLORS.gray200 },
+  panelRemoveButton: {
+    position: 'absolute',
+    top: SPACING.sm,
+    right: SPACING.sm,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderRadius: 999,
+    padding: 2,
+  },
   confirmBtn: {
     marginTop: SPACING.md,
     backgroundColor: COLORS.primary,

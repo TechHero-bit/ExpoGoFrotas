@@ -80,10 +80,12 @@ export default function VehicleCheckoutScreen({ navigation }) {
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       quality: 0.7,
+      base64: true,
     });
 
     if (!result.canceled) {
-      setter(result.assets[0].uri);
+      const asset = result.assets[0];
+      setter({ uri: asset.uri, base64: asset.base64 });
     }
   };
 
@@ -207,11 +209,11 @@ export default function VehicleCheckoutScreen({ navigation }) {
         <Text style={styles.sectionTitle}>Fotos de Conferência</Text>
         <View style={styles.photoRow}>
           <TouchableOpacity style={styles.photoCard} onPress={() => pickImage(setSelfieUri)} activeOpacity={0.85}>
-            {selfieUri ? <Image source={{ uri: selfieUri }} style={styles.photoPreview} /> : <Ionicons name="camera-outline" size={28} color={COLORS.gray500} />}
+            {selfieUri ? <Image source={{ uri: selfieUri.uri }} style={styles.photoPreview} /> : <Ionicons name="camera-outline" size={28} color={COLORS.gray500} />}
             <Text style={styles.photoLabel}>Selfie</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.photoCard} onPress={() => pickImage(setVehiclePhotoUri)} activeOpacity={0.85}>
-            {vehiclePhotoUri ? <Image source={{ uri: vehiclePhotoUri }} style={styles.photoPreview} /> : <Ionicons name="car-outline" size={28} color={COLORS.gray500} />}
+            {vehiclePhotoUri ? <Image source={{ uri: vehiclePhotoUri.uri }} style={styles.photoPreview} /> : <Ionicons name="car-outline" size={28} color={COLORS.gray500} />}
             <Text style={styles.photoLabel}>Veículo</Text>
           </TouchableOpacity>
         </View>
