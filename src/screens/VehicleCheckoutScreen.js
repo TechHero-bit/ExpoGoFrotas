@@ -25,8 +25,10 @@ export default function VehicleCheckoutScreen({ navigation }) {
   const [vehicle, setVehicle] = useState(null);
   const [observations, setObservations] = useState('');
   const [kmFinal, setKmFinal] = useState('');
+  const [combustivel, setCombustivel] = useState('');
   const [selfieUri, setSelfieUri] = useState(null);
   const [vehiclePhotoUri, setVehiclePhotoUri] = useState(null);
+  const [painelUri, setPainelUri] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -77,6 +79,12 @@ export default function VehicleCheckoutScreen({ navigation }) {
   }, []);
 
   const pickImage = async (setter) => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permissao negada', 'Preciso de acesso a camera para registrar a foto.');
+      return;
+    }
+
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       quality: 0.7,
@@ -92,6 +100,10 @@ export default function VehicleCheckoutScreen({ navigation }) {
   const handleFinish = async () => {
     if (!kmFinal.trim()) {
       Alert.alert('Informe o KM final', 'Digite o KM atual do veículo ao finalizar.');
+      return;
+    }
+    if (!combustivel.trim()) {
+      Alert.alert('Informe o nivel de combustivel', 'Digite o nivel de combustivel do veiculo ao finalizar.');
       return;
     }
     if (!journey) {
@@ -117,9 +129,11 @@ export default function VehicleCheckoutScreen({ navigation }) {
         usuarioId,
         veiculoId: journey.veiculo_id,
         kmFinal: sanitizedKm,
+        nivelCombustivel: combustivel,
         observacoes: observations,
         selfieUrl: selfieUri,
         veiculoFotoUrl: vehiclePhotoUri,
+        painelUrl: painelUri,
       });
 
       await clearJourney();
@@ -136,6 +150,7 @@ export default function VehicleCheckoutScreen({ navigation }) {
       // Exibir o erro real vindo do backend/Supabase para facilitar diagnóstico
       const errorMessage = saveError?.message || saveError?.details || 'Erro desconhecido ao encerrar a jornada.';
       setError(`Falha: ${errorMessage}`);
+      Alert.alert('Erro ao finalizar jornada', errorMessage);
     } finally {
       setSaving(false);
     }
@@ -194,6 +209,36 @@ export default function VehicleCheckoutScreen({ navigation }) {
         </View>
 
         <View style={styles.card}>
+          <Text style={styles.cardLabel}>Nivel de Combustivel</Text>
+          <View style={styles.inputRow}>
+            <Ionicons name="water-outline" size={20} color={COLORS.gray400} />
+            <TextInput
+              value={combustivel}
+              onChangeText={setCombustivel}
+              placeholder="Ex: Meio tanque, reserva"
+              style={styles.input}
+            />
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>Foto do Painel</Text>
+          <TouchableOpacity style={styles.photoButton} onPress={() => pickImage(setPainelUri)} activeOpacity={0.85}>
+            <Ionicons name="camera-outline" size={18} color={COLORS.white} />
+            <Text style={styles.photoButtonText}>{painelUri ? 'Refazer Foto do Painel' : 'Tirar Foto do Painel'}</Text>
+          </TouchableOpacity>
+
+          {painelUri ? (
+            <View style={styles.panelPreviewWrapper}>
+              <Image source={{ uri: painelUri.uri }} style={styles.panelPreview} resizeMode="cover" />
+              <TouchableOpacity style={styles.panelRemoveButton} onPress={() => setPainelUri(null)} activeOpacity={0.8}>
+                <Ionicons name="close-circle" size={24} color={COLORS.white} />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={styles.card}>
           <Text style={styles.cardLabel}>Observações</Text>
           <TextInput
             value={observations}
@@ -223,10 +268,10 @@ export default function VehicleCheckoutScreen({ navigation }) {
 
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.finishBtn, (!kmFinal.trim() || saving) && styles.btnDisabled]}
+          style={[styles.finishBtn, (!kmFinal.trim() || !combustivel.trim() || saving) && styles.btnDisabled]}
           onPress={handleFinish}
           activeOpacity={0.85}
-          disabled={!kmFinal.trim() || saving}
+          disabled={!kmFinal.trim() || !combustivel.trim() || saving}
         >
           <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
           <Text style={styles.finishBtnText}>{saving ? 'Finalizando...' : 'Finalizar Jornada'}</Text>
@@ -280,6 +325,11 @@ const styles = StyleSheet.create({
     padding: SPACING.sm,
   },
   photoLabel: { fontSize: 12, color: COLORS.textSecondary },
+  photoButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.xs, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.md, borderRadius: BORDER_RADIUS.md, backgroundColor: COLORS.primary },
+  photoButtonText: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
+  panelPreviewWrapper: { position: 'relative', marginTop: SPACING.sm, borderRadius: BORDER_RADIUS.md, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
+  panelPreview: { width: '100%', height: 180, backgroundColor: COLORS.gray200 },
+  panelRemoveButton: { position: 'absolute', top: SPACING.sm, right: SPACING.sm, backgroundColor: 'rgba(0,0,0,0.35)', borderRadius: 999, padding: 2 },
   photoPreview: { width: '100%', height: 120, borderRadius: BORDER_RADIUS.md },
   footer: { padding: SPACING.md, backgroundColor: COLORS.white, borderTopWidth: 1, borderTopColor: COLORS.border },
   finishBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, backgroundColor: COLORS.primary, borderRadius: BORDER_RADIUS.md, paddingVertical: SPACING.md },

@@ -346,18 +346,18 @@ export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial,
 
       console.log('[LOGITRACK] Inserindo dados de check-in...');
 
-      const { error: checkinError } = await supabase.from('checkins').insert([
+      const { data: checkin, error: checkinError } = await supabase.from('checkins').insert([
         {
           jornada_id: jornada.id,
           veiculo_id: parseInt(veiculoIdStr) || veiculoIdStr,
           km: kmNumerico,
-          nivel_combustivel: nivel_combustivel.trim(),
+          nivel_combustivel: nivelCombustivel.trim(),
           selfie_uri: finalSelfieUrl,
           foto_placa_uri: finalPlacaUrl,
           foto_painel_uri: finalPainelUrl,
           data_hora: new Date().toISOString(),
         },
-      ]);
+      ]).select('id').single();
 
       if (checkinError) {
         const errorDetails = {
@@ -386,6 +386,16 @@ export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial,
         }
 
         throw new Error(`Erro ao registrar check-in: ${checkinError.message}`);
+      }
+
+      const { error: jornadaCheckinError } = await supabase
+        .from('jornadas')
+        .update({ checkin_id: checkin.id })
+        .eq('id', jornada.id);
+
+      if (jornadaCheckinError) {
+        console.error('[ERRO PostgreSQL] Falha ao vincular check-in na jornada:', jornadaCheckinError);
+        throw new Error(`Erro ao vincular check-in na jornada: ${jornadaCheckinError.message}`);
       }
 
       console.log('[LOGITRACK] Check-in registrado com sucesso.');
@@ -454,12 +464,13 @@ export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial,
   }
 }
 
-export async function finishJourney({ jornadaId, veiculoId, kmFinal, observacoes, selfieUrl, veiculoFotoUrl }) {
+export async function finishJourney({ jornadaId, veiculoId, kmFinal, nivelCombustivel, observacoes, selfieUrl, veiculoFotoUrl, painelUrl }) {
   try {
     console.log('[LOGITRACK] Iniciando finishJourney com params:', {
       jornadaId,
       veiculoId,
       kmFinal,
+      nivelCombustivel,
     });
 
     // Validar entrada
@@ -474,30 +485,50 @@ export async function finishJourney({ jornadaId, veiculoId, kmFinal, observacoes
       throw new Error('O valor de KM final informado é inválido. Apenas números são permitidos.');
     }
 
+    if (!nivelCombustivel || typeof nivelCombustivel !== 'string' || !nivelCombustivel.trim()) {
+      throw new Error('Informe o nivel de combustivel do veiculo no check-out.');
+    }
+
     // ============================================
     // 1. UPLOAD DE IMAGENS E INSERT NA TABELA CHECKOUTS
     // ============================================
     console.log('[LOGITRACK] Realizando upload das fotos de check-out...');
+    const uploadedPaths = [];
     const selfieUpload = await uploadImageToSupabase(selfieUrl, `checkout_selfie_${jornadaId}`);
     const veiculoUpload = await uploadImageToSupabase(veiculoFotoUrl, `checkout_veiculo_${jornadaId}`);
+    const painelUpload = await uploadImageToSupabase(painelUrl, `checkout_painel_${veiculoIdInt}`);
     const finalSelfieUrl = selfieUpload ? selfieUpload.publicUrl : null;
     const finalVeiculoUrl = veiculoUpload ? veiculoUpload.publicUrl : null;
+    const finalPainelUrl = painelUpload ? painelUpload.publicUrl : null;
+
+    if (selfieUpload && selfieUpload.path) uploadedPaths.push(selfieUpload.path);
+    if (veiculoUpload && veiculoUpload.path) uploadedPaths.push(veiculoUpload.path);
+    if (painelUpload && painelUpload.path) uploadedPaths.push(painelUpload.path);
 
     console.log('[LOGITRACK] Inserindo checkout...');
 
-    const { error: checkoutError } = await supabase.from('checkouts').insert([
+    const { data: checkout, error: checkoutError } = await supabase.from('checkouts').insert([
       {
         jornada_id: jornadaId,
         veiculo_id: veiculoIdInt,
+        nivel_combustivel: nivelCombustivel.trim(),
         observacoes: observacoes || null,
         selfie_uri: finalSelfieUrl,
         foto_veiculo_uri: finalVeiculoUrl,
+        foto_painel_uri: finalPainelUrl,
         data_hora: new Date().toISOString(),
       },
-    ]);
+    ]).select('id').single();
 
     if (checkoutError) {
       console.error('[ERRO PostgreSQL] Falha ao criar checkout:', checkoutError);
+      if (uploadedPaths.length) {
+        try {
+          await supabase.storage.from('evidencias').remove(uploadedPaths);
+        } catch (removeError) {
+          console.warn('[LOGITRACK] Falha ao remover arquivos apos erro no checkout:', removeError.message || removeError);
+        }
+      }
       throw new Error(`Erro de Banco (Checkout): ${checkoutError.message}`);
     }
 
@@ -514,6 +545,7 @@ export async function finishJourney({ jornadaId, veiculoId, kmFinal, observacoes
         status: 'Finalizada', 
         encerrado_em: new Date().toISOString(),
         km_final: parsedKm,
+        checkout_id: checkout.id,
       })
       .eq('id', jornadaId);
 
@@ -563,6 +595,8 @@ export async function fetchAllJourneys() {
       km_final,
       motorista_id,
       veiculo_id,
+      checkin_id,
+      checkout_id,
       usuarios!motorista_id ( nome ),
       veiculos!veiculo_id ( placa, modelo )
     `)
@@ -579,20 +613,31 @@ export async function fetchAllJourneys() {
   
   const { data: checkins } = await supabase
     .from('checkins')
-    .select('jornada_id, selfie_uri, foto_placa_uri')
+    .select('id, jornada_id, selfie_uri, foto_placa_uri, nivel_combustivel, foto_painel_uri')
     .in('jornada_id', jornadasIds);
     
   const { data: checkouts } = await supabase
     .from('checkouts')
-    .select('jornada_id, selfie_uri, foto_veiculo_uri')
+    .select('id, jornada_id, selfie_uri, foto_veiculo_uri, nivel_combustivel, foto_painel_uri')
     .in('jornada_id', jornadasIds);
 
   // Fazer o merge dos dados
+  const checkinsList = checkins || [];
+  const checkoutsList = checkouts || [];
+
+  // Preferir os vinculos formais da jornada; manter jornada_id como fallback para registros antigos.
   const jornadasComFotos = jornadas.map(jornada => {
+    const linkedCheckin = jornada.checkin_id
+      ? checkinsList.find(c => c.id === jornada.checkin_id)
+      : null;
+    const linkedCheckout = jornada.checkout_id
+      ? checkoutsList.find(c => c.id === jornada.checkout_id)
+      : null;
+
     return {
       ...jornada,
-      checkins: checkins ? checkins.filter(c => c.jornada_id === jornada.id) : [],
-      checkouts: checkouts ? checkouts.filter(c => c.jornada_id === jornada.id) : []
+      checkins: linkedCheckin ? [linkedCheckin] : checkinsList.filter(c => c.jornada_id === jornada.id),
+      checkouts: linkedCheckout ? [linkedCheckout] : checkoutsList.filter(c => c.jornada_id === jornada.id)
     };
   });
 

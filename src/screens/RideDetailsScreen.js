@@ -101,8 +101,12 @@ export default function RideDetailsScreen({ route, navigation }) {
     const checkinPlaca = resolveImageUrl(checkin?.foto_placa_uri);
     const checkoutSelfie = resolveImageUrl(checkout?.selfie_uri);
     const checkoutVeiculo = resolveImageUrl(checkout?.foto_veiculo_uri);
+    const checkinPainel = resolveImageUrl(checkin?.foto_painel_uri);
+    const checkoutPainel = resolveImageUrl(checkout?.foto_painel_uri);
     
-    const hasAnyPhoto = checkinSelfie || checkinPlaca || checkoutSelfie || checkoutVeiculo;
+    const hasAnyPhoto = checkinSelfie || checkinPlaca || checkinPainel || checkoutSelfie || checkoutVeiculo || checkoutPainel;
+    const checkinCombustivel = checkin?.nivel_combustivel?.trim() || 'Nao registrado';
+    const checkoutCombustivel = checkout?.nivel_combustivel?.trim() || 'Nao registrado';
 
     return (
         <AdminGuard navigation={navigation}>
@@ -208,6 +212,40 @@ export default function RideDetailsScreen({ route, navigation }) {
                         <View style={styles.row}>
                             <Text style={styles.label}>Distancia Percorrida:</Text>
                             <Text style={styles.highlightValue}>{distPercorrida}</Text>
+                        </View>
+                    </View>
+
+                    {/* Comparativo de combustivel e painel */}
+                    <View style={styles.card}>
+                        <Text style={styles.sectionTitle}>Combustivel e Painel</Text>
+                        <View style={styles.comparisonRow}>
+                            <View style={styles.comparisonCol}>
+                                <Text style={styles.comparisonTitle}>Check-in</Text>
+                                <Text style={styles.label}>Nivel de combustivel</Text>
+                                <Text style={styles.value}>{checkinCombustivel}</Text>
+                                <Text style={styles.label}>Foto do painel</Text>
+                                {checkinPainel ? (
+                                    <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(checkinPainel)}>
+                                        <Image source={{ uri: checkinPainel }} style={styles.panelThumb} resizeMode="cover" />
+                                    </TouchableOpacity>
+                                ) : (
+                                    <Text style={styles.subtleText}>Foto do painel nao registrada</Text>
+                                )}
+                            </View>
+
+                            <View style={styles.comparisonCol}>
+                                <Text style={styles.comparisonTitle}>Check-out</Text>
+                                <Text style={styles.label}>Nivel de combustivel</Text>
+                                <Text style={styles.value}>{checkoutCombustivel}</Text>
+                                <Text style={styles.label}>Foto do painel</Text>
+                                {checkoutPainel ? (
+                                    <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(checkoutPainel)}>
+                                        <Image source={{ uri: checkoutPainel }} style={styles.panelThumb} resizeMode="cover" />
+                                    </TouchableOpacity>
+                                ) : (
+                                    <Text style={styles.subtleText}>Foto do painel nao registrada</Text>
+                                )}
+                            </View>
                         </View>
                     </View>
 
@@ -425,6 +463,33 @@ const styles = StyleSheet.create({
         gap: SPACING.md,
         marginTop: SPACING.xs,
     },
+    comparisonRow: {
+        flexDirection: 'row',
+        gap: SPACING.md,
+        marginTop: SPACING.xs,
+    },
+    comparisonCol: {
+        flex: 1,
+        gap: 6,
+    },
+    comparisonTitle: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: COLORS.primary,
+        marginBottom: 2,
+    },
+    panelThumb: {
+        width: '100%',
+        height: 116,
+        borderRadius: BORDER_RADIUS.sm,
+        backgroundColor: COLORS.gray100,
+    },
+    subtleText: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+        fontStyle: 'italic',
+    },
+
     photoContainer: {
         flex: 1,
         gap: 4,
