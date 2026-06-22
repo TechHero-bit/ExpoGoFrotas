@@ -15,7 +15,7 @@ import { supabase } from '../services/supabase';
 import { fetchActiveJourney, fetchVeiculoById } from '../services/dbService';
 import RouteMap from '../components/RouteMap';
 import useLocation from '../hooks/useLocation';
-import { fetchRoute, resolveLocation, calculateETA } from '../services/osrmService';
+import { fetchRoute, getJourneyRoutePoint, resolveJourneyRoutePoint, calculateETA } from '../services/osrmService';
 
 export default function JourneyInProgressScreen({ navigation }) {
   const [journey, setJourney] = useState(null);
@@ -27,6 +27,8 @@ export default function JourneyInProgressScreen({ navigation }) {
   const [routeInfo, setRouteInfo] = useState(null);
   const [routeLoading, setRouteLoading] = useState(false);
   const [eta, setEta] = useState('---');
+  const [routeOrigin, setRouteOrigin] = useState(null);
+  const [routeDestination, setRouteDestination] = useState(null);
 
   // ── GPS em Tempo Real ──
   const { location, errorMsg, isTracking } = useLocation({
@@ -69,12 +71,22 @@ export default function JourneyInProgressScreen({ navigation }) {
           if (currentJourney.origem && currentJourney.destino) {
             try {
               setRouteLoading(true);
-              const originCoord = resolveLocation(currentJourney.origem, 'origin');
-              const destCoord = resolveLocation(currentJourney.destino, 'destination');
-              const route = await fetchRoute(originCoord, destCoord);
-              if (isActive) {
-                setRouteInfo(route);
-                setEta(calculateETA(route.durationMin));
+              const originCoord = await resolveJourneyRoutePoint(currentJourney, 'origin');
+              const destCoord = await resolveJourneyRoutePoint(currentJourney, 'destination');
+              if (!originCoord || !destCoord) {
+                if (isActive) {
+                  setRouteOrigin(null);
+                  setRouteDestination(null);
+                  setRouteInfo(null);
+                }
+              } else {
+                const route = await fetchRoute(originCoord, destCoord);
+                if (isActive) {
+                  setRouteOrigin(originCoord);
+                  setRouteDestination(destCoord);
+                  setRouteInfo(route);
+                  setEta(calculateETA(route.durationMin));
+                }
               }
             } catch (routeError) {
               console.warn('[JourneyInProgress] Erro ao calcular rota:', routeError.message);
@@ -138,12 +150,8 @@ export default function JourneyInProgressScreen({ navigation }) {
   }
 
   // Resolver coordenadas para o mapa
-  const originCoord = journey.origem
-    ? resolveLocation(journey.origem, 'origin')
-    : null;
-  const destCoord = journey.destino
-    ? resolveLocation(journey.destino, 'destination')
-    : null;
+  const originCoord = routeOrigin || getJourneyRoutePoint(journey, 'origin');
+  const destCoord = routeDestination || getJourneyRoutePoint(journey, 'destination');
 
   return (
     <SafeAreaView style={styles.container}>

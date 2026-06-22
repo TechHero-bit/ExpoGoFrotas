@@ -14,7 +14,7 @@ import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 import AdminGuard from '../components/AdminGuard';
 import { supabase } from '../services/supabase';
 import RouteMap from '../components/RouteMap';
-import { fetchRoute, resolveLocation } from '../services/osrmService';
+import { fetchRoute, getJourneyRoutePoint, resolveJourneyRoutePoint } from '../services/osrmService';
 
 export default function RideDetailsScreen({ route, navigation }) {
     const { journey } = route.params || {};
@@ -23,6 +23,8 @@ export default function RideDetailsScreen({ route, navigation }) {
     // ── Estado do Mapa / Rota ──
     const [routeInfo, setRouteInfo] = useState(null);
     const [routeLoading, setRouteLoading] = useState(false);
+    const [routeOrigin, setRouteOrigin] = useState(null);
+    const [routeDestination, setRouteDestination] = useState(null);
 
     // Calcular rota quando a tela carrega
     useEffect(() => {
@@ -31,10 +33,18 @@ export default function RideDetailsScreen({ route, navigation }) {
         const calcRoute = async () => {
             try {
                 setRouteLoading(true);
-                const originCoord = resolveLocation(journey.origem, 'origin');
-                const destCoord = resolveLocation(journey.destino, 'destination');
-                const result = await fetchRoute(originCoord, destCoord);
-                setRouteInfo(result);
+                const originCoord = await resolveJourneyRoutePoint(journey, 'origin');
+                const destCoord = await resolveJourneyRoutePoint(journey, 'destination');
+                if (!originCoord || !destCoord) {
+                    setRouteOrigin(null);
+                    setRouteDestination(null);
+                    setRouteInfo(null);
+                } else {
+                    const result = await fetchRoute(originCoord, destCoord);
+                    setRouteOrigin(originCoord);
+                    setRouteDestination(destCoord);
+                    setRouteInfo(result);
+                }
             } catch (err) {
                 console.warn('[RideDetails] Erro ao calcular rota:', err.message);
             } finally {
@@ -185,8 +195,8 @@ export default function RideDetailsScreen({ route, navigation }) {
                     {/* Mapa Estático da Rota (Read-only) */}
                     {journey.origem && journey.destino && (
                         <RouteMap
-                            origin={{ ...resolveLocation(journey.origem, 'origin'), label: journey.origem }}
-                            destination={{ ...resolveLocation(journey.destino, 'destination'), label: journey.destino }}
+                            origin={routeOrigin || getJourneyRoutePoint(journey, 'origin')}
+                            destination={routeDestination || getJourneyRoutePoint(journey, 'destination')}
                             routeInfo={routeInfo}
                             loading={routeLoading}
                             initialMode="minimized"

@@ -18,7 +18,7 @@ import { supabase } from '../services/supabase';
 import { fetchActiveJourney, fetchVeiculoById, finishJourney } from '../services/dbService';
 import { useJourney } from '../contexts/JourneyContext';
 import RouteMap from '../components/RouteMap';
-import { fetchRoute, resolveLocation } from '../services/osrmService';
+import { fetchRoute, getJourneyRoutePoint, resolveJourneyRoutePoint } from '../services/osrmService';
 
 export default function VehicleCheckoutScreen({ navigation }) {
   const [journey, setJourney] = useState(null);
@@ -36,6 +36,8 @@ export default function VehicleCheckoutScreen({ navigation }) {
   // ── Estado do Mapa / Rota ──
   const [routeInfo, setRouteInfo] = useState(null);
   const [routeLoading, setRouteLoading] = useState(false);
+  const [routeOrigin, setRouteOrigin] = useState(null);
+  const [routeDestination, setRouteDestination] = useState(null);
 
   const { clearJourney } = useJourney();
 
@@ -57,10 +59,18 @@ export default function VehicleCheckoutScreen({ navigation }) {
         if (currentJourney?.origem && currentJourney?.destino) {
           try {
             setRouteLoading(true);
-            const originCoord = resolveLocation(currentJourney.origem, 'origin');
-            const destCoord = resolveLocation(currentJourney.destino, 'destination');
-            const route = await fetchRoute(originCoord, destCoord);
-            setRouteInfo(route);
+            const originCoord = await resolveJourneyRoutePoint(currentJourney, 'origin');
+            const destCoord = await resolveJourneyRoutePoint(currentJourney, 'destination');
+            if (!originCoord || !destCoord) {
+              setRouteOrigin(null);
+              setRouteDestination(null);
+              setRouteInfo(null);
+            } else {
+              const route = await fetchRoute(originCoord, destCoord);
+              setRouteOrigin(originCoord);
+              setRouteDestination(destCoord);
+              setRouteInfo(route);
+            }
           } catch (routeError) {
             console.warn('[VehicleCheckout] Erro ao calcular rota:', routeError.message);
           } finally {
@@ -184,8 +194,8 @@ export default function VehicleCheckoutScreen({ navigation }) {
         {/* ── Mapa de Rota Concluída (Minimizado, Read-only) ── */}
         {journey?.origem && journey?.destino && (
           <RouteMap
-            origin={{ ...resolveLocation(journey.origem, 'origin'), label: journey.origem }}
-            destination={{ ...resolveLocation(journey.destino, 'destination'), label: journey.destino }}
+            origin={routeOrigin || getJourneyRoutePoint(journey, 'origin')}
+            destination={routeDestination || getJourneyRoutePoint(journey, 'destination')}
             routeInfo={routeInfo}
             loading={routeLoading}
             initialMode="minimized"

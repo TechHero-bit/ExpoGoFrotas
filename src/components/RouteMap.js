@@ -12,7 +12,7 @@
  * @module RouteMap
  */
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
 import {
   View,
   Text,
@@ -36,6 +36,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+/**
+ * Verifica se um valor é uma coordenada válida (número finito).
+ */
+const isValidCoord = (val) => typeof val === 'number' && Number.isFinite(val);
 
 /**
  * URL do estilo de tiles. Usando OpenFreeMap (tiles gratuitos de alta qualidade).
@@ -77,29 +82,9 @@ const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
 /**
  * Componente de mapa reutilizável com suporte a rotas, marcadores e GPS.
  *
- * @param {RouteMapProps} props
- * @returns {React.ReactElement}
- *
- * @example
- * // Mapa minimizado no Check-in
- * <RouteMap
- *   origin={{ latitude: -23.55, longitude: -46.63, label: 'Depósito Central' }}
- *   destination={{ latitude: -22.90, longitude: -47.06, label: 'CD Norte' }}
- *   routeInfo={routeData}
- *   initialMode="minimized"
- * />
- *
- * @example
- * // Mapa expandido com GPS na Jornada
- * <RouteMap
- *   origin={origin}
- *   destination={destination}
- *   routeInfo={routeData}
- *   showUserLocation={true}
- *   initialMode="expanded"
- * />
+ * Memoizado para evitar re-renderizações desnecessárias.
  */
-export default function RouteMap({
+export default memo(function RouteMap({
   origin,
   destination,
   routeInfo,
@@ -139,54 +124,65 @@ export default function RouteMap({
 
     const bounds = getBounds();
     if (bounds) {
-      const sw = bounds[0];
-      const ne = bounds[1];
-      cameraRef.current.fitBounds(ne, sw, 50, 800);
+      cameraRef.current.fitBounds(bounds.ne, bounds.sw, 50, 800);
     }
-  }, [routeInfo, mapReady, getBounds, isExpanded]);
+  }, [routeInfo, mapReady, isExpanded]);
 
   /**
    * Calcula os bounds para encaixar origem e destino no mapa.
    * Retorna [sw, ne] com padding.
    */
   const getBounds = useCallback(() => {
-    if (!origin || !destination) return null;
+    const lngs = [];
+    const lats = [];
 
-    const lngs = [origin.longitude, destination.longitude];
-    const lats = [origin.latitude, destination.latitude];
+    if (origin && isValidCoord(origin.latitude) && isValidCoord(origin.longitude)) {
+      lngs.push(origin.longitude);
+      lats.push(origin.latitude);
+    }
+
+    if (destination && isValidCoord(destination.latitude) && isValidCoord(destination.longitude)) {
+      lngs.push(destination.longitude);
+      lats.push(destination.latitude);
+    }
 
     // Adicionar coordenadas da rota para bounds mais precisos
     if (routeInfo?.geometry?.geometry?.coordinates) {
       routeInfo.geometry.geometry.coordinates.forEach(([lng, lat]) => {
-        lngs.push(lng);
-        lats.push(lat);
+        if (isValidCoord(lng) && isValidCoord(lat)) {
+          lngs.push(lng);
+          lats.push(lat);
+        }
       });
     }
+
+    if (lngs.length === 0 || lats.length === 0) return null;
 
     const minLng = Math.min(...lngs);
     const maxLng = Math.max(...lngs);
     const minLat = Math.min(...lats);
     const maxLat = Math.max(...lats);
 
-    // Retorna array [sw, ne] compatível com a v11 (padrão MapLibre/GL JS)
-    return [
-      [minLng, minLat],
-      [maxLng, maxLat],
-    ];
+    // MapLibre Camera bounds expects an array: [west, south, east, north]
+    // which corresponds to [minLon, minLat, maxLon, maxLat]
+    return [minLng, minLat, maxLng, maxLat];
   }, [origin, destination, routeInfo]);
 
   /**
    * Centro do mapa (fallback se bounds não estiver disponível).
    */
   const getCenter = useCallback(() => {
-    if (origin && destination) {
+    const validOrigin = origin && isValidCoord(origin.latitude) && isValidCoord(origin.longitude);
+    const validDest = destination && isValidCoord(destination.latitude) && isValidCoord(destination.longitude);
+
+    if (validOrigin && validDest) {
       return [
         (origin.longitude + destination.longitude) / 2,
         (origin.latitude + destination.latitude) / 2,
       ];
     }
-    if (origin) return [origin.longitude, origin.latitude];
-    if (destination) return [destination.longitude, destination.latitude];
+    if (validOrigin) return [origin.longitude, origin.latitude];
+    if (validDest) return [destination.longitude, destination.latitude];
     // São Paulo como fallback
     return [-46.6333, -23.5505];
   }, [origin, destination]);
@@ -206,10 +202,9 @@ export default function RouteMap({
 
     const bounds = getBounds();
     if (bounds && cameraRef.current) {
-      const sw = bounds[0];
-      const ne = bounds[1];
-      // Centraliza a câmera usando fitBounds (ne, sw, padding_number, duration)
-      cameraRef.current.fitBounds(ne, sw, 60, 800);
+      // fitBounds for version 10+ expects (boundsArray, padding, duration)
+      // where boundsArray is [west, south, east, north]
+      cameraRef.current.fitBounds(bounds, 60, 800);
     }
   };
 
@@ -276,7 +271,7 @@ export default function RouteMap({
         )}
 
         {/* Marcador de Origem */}
-        {origin?.latitude !== undefined && origin?.longitude !== undefined && (
+        {origin && isValidCoord(origin.latitude) && isValidCoord(origin.longitude) && (
           <Marker
             id="origin-marker"
             lngLat={[origin.longitude, origin.latitude]}
@@ -288,7 +283,7 @@ export default function RouteMap({
         )}
 
         {/* Marcador de Destino */}
-        {destination?.latitude !== undefined && destination?.longitude !== undefined && (
+        {destination && isValidCoord(destination.latitude) && isValidCoord(destination.longitude) && (
           <Marker
             id="destination-marker"
             lngLat={[destination.longitude, destination.latitude]}
@@ -464,7 +459,7 @@ export default function RouteMap({
       </TouchableOpacity>
     </Animated.View>
   );
-}
+});
 
 // ─── ESTILOS ─────────────────────────────────────────────────────────
 

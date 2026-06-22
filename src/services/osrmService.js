@@ -8,6 +8,7 @@
  */
 
 const OSRM_BASE_URL = 'https://router.project-osrm.org/route/v1/driving';
+const LOCATIONIQ_TOKEN = 'pk.2bd751445ee7150a339d49346a83657a';
 
 /**
  * @typedef {Object} Coordinate
@@ -225,4 +226,83 @@ export function resolveLocation(locationName, type = 'origin') {
   return type === 'origin'
     ? DEMO_LOCATIONS._default_origin
     : DEMO_LOCATIONS._default_destination;
+}
+
+function parseCoordinate(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function getStoredJourneyRoutePoint(journey, type = 'origin') {
+  if (!journey) return null;
+
+  const isOrigin = type === 'origin';
+  const latitude = parseCoordinate(isOrigin ? journey.origem_latitude : journey.destino_latitude);
+  const longitude = parseCoordinate(isOrigin ? journey.origem_longitude : journey.destino_longitude);
+  const label = isOrigin ? journey.origem : journey.destino;
+
+  if (latitude !== null && longitude !== null) {
+    return { latitude, longitude, label };
+  }
+
+  return null;
+}
+
+function getKnownDemoRoutePoint(journey, type = 'origin') {
+  const label = type === 'origin' ? journey?.origem : journey?.destino;
+  if (label && DEMO_LOCATIONS[label]) {
+    return { ...DEMO_LOCATIONS[label], label };
+  }
+
+  return null;
+}
+
+/**
+ * Resolve coordenadas ja disponiveis localmente. Nao usa fallback generico,
+ * para evitar desenhar rotas falsas em Sao Paulo/Campinas.
+ */
+export function getJourneyRoutePoint(journey, type = 'origin') {
+  return getStoredJourneyRoutePoint(journey, type) || getKnownDemoRoutePoint(journey, type);
+}
+
+export async function geocodeAddress(addressText) {
+  if (!addressText || typeof addressText !== 'string' || addressText.trim().length < 3) return null;
+
+  try {
+    const url = 'https://api.locationiq.com/v1/search.php?key=' + LOCATIONIQ_TOKEN + '&q=' + encodeURIComponent(addressText) + '&countrycodes=br&limit=1&format=json';
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      console.warn(`[osrmService] Erro ao geocodificar endereco (${response.status})`);
+      return null;
+    }
+
+    const data = await response.json();
+    const first = Array.isArray(data) ? data[0] : null;
+
+    if (!first) return null;
+
+    const latitude = parseCoordinate(first?.lat);
+    const longitude = parseCoordinate(first?.lon);
+
+    if (latitude === null || longitude === null) return null;
+
+    return { latitude, longitude, label: addressText };
+  } catch (error) {
+    console.warn('[osrmService] Falha na geocodificação:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Resolve coordenadas para mapas de jornadas. Usa coordenadas salvas,
+ * locais demo conhecidos e, por ultimo, geocodificacao do texto.
+ */
+export async function resolveJourneyRoutePoint(journey, type = 'origin') {
+  const localPoint = getJourneyRoutePoint(journey, type);
+  if (localPoint) return localPoint;
+
+  const label = type === 'origin' ? journey?.origem : journey?.destino;
+  return geocodeAddress(label);
 }

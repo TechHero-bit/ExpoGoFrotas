@@ -141,7 +141,7 @@ export async function fetchDashboardMetrics() {
 export async function fetchActiveJourney(usuarioId) {
   const { data, error, status } = await supabase
     .from('jornadas')
-    .select('id, status, origem, destino, iniciado_em, veiculo_id')
+    .select('id, status, origem, destino, origem_latitude, origem_longitude, destino_latitude, destino_longitude, iniciado_em, veiculo_id')
     .eq('motorista_id', usuarioId)
     .eq('status', 'Em andamento')
     .order('iniciado_em', { ascending: false })
@@ -164,7 +164,7 @@ export async function fetchActiveJourney(usuarioId) {
 export async function fetchJourneyById(jornadaId) {
   const { data, error, status } = await supabase
     .from('jornadas')
-    .select('id, status, origem, destino, iniciado_em, encerrado_em, veiculo_id')
+    .select('id, status, origem, destino, origem_latitude, origem_longitude, destino_latitude, destino_longitude, iniciado_em, encerrado_em, veiculo_id')
     .eq('id', jornadaId);
 
   console.log('[DEBUG LOGITRACK] Query fetchJourneyById retornou:', { data, error, status, totalRows: data?.length });
@@ -201,7 +201,7 @@ export async function fetchVeiculoById(veiculoId) {
   return dataSingle;
 }
 
-export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial, nivelCombustivel, selfieUrl, placaUrl, painelUrl, origem, destino }) {
+export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial, nivelCombustivel, selfieUrl, placaUrl, painelUrl, origem, destino, origemCoords, destinoCoords }) {
   try {
     // ============================================
     // 1. VALIDAÇÃO DE ENTRADA
@@ -214,6 +214,8 @@ export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial,
       painelUrl,
       origem,
       destino,
+      origemCoords,
+      destinoCoords,
     });
 
     // Validar usuarioId
@@ -283,6 +285,10 @@ export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial,
           veiculo_id: parseInt(veiculoIdStr) || veiculoIdStr,
           origem: origem.trim(),
           destino: destino.trim(),
+          origem_latitude: origemCoords?.latitude ?? null,
+          origem_longitude: origemCoords?.longitude ?? null,
+          destino_latitude: destinoCoords?.latitude ?? null,
+          destino_longitude: destinoCoords?.longitude ?? null,
           status: 'Em andamento',
           iniciado_em: agora,
           chegada_estimada: agora,
@@ -589,6 +595,10 @@ export async function fetchAllJourneys() {
       status,
       origem,
       destino,
+      origem_latitude,
+      origem_longitude,
+      destino_latitude,
+      destino_longitude,
       iniciado_em,
       encerrado_em,
       km_inicial,
@@ -618,7 +628,7 @@ export async function fetchAllJourneys() {
     
   const { data: checkouts } = await supabase
     .from('checkouts')
-    .select('id, jornada_id, selfie_uri, foto_veiculo_uri, nivel_combustivel, foto_painel_uri')
+    .select('id, jornada_id, selfie_uri, foto_veiculo_uri, nivel_combustivel, foto_painel_uri, observacoes')
     .in('jornada_id', jornadasIds);
 
   // Fazer o merge dos dados

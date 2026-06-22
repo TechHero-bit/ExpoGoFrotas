@@ -3,7 +3,7 @@ import { View, TextInput, Text, FlatList, TouchableOpacity, StyleSheet, Activity
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 
-export default function AddressAutocomplete({ placeholder, onSelect, style }) {
+export default function AddressAutocomplete({ placeholder, onSelect, onChangeText, style }) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -61,12 +61,19 @@ export default function AddressAutocomplete({ placeholder, onSelect, style }) {
       const response = await fetch(`https://api.locationiq.com/v1/autocomplete.php?key=${LOCATIONIQ_TOKEN}&q=${encodeURIComponent(text)}&countrycodes=br&limit=5&addressdetails=1&format=json`);
       const data = await response.json();
       const items = Array.isArray(data) ? data : [];
-      const parsed = items.map((item) => ({
-        ...item,
-        label: formatLocationIQAddress(item.address, item.display_name),
-        latitude: Number(item.lat),
-        longitude: Number(item.lon),
-      }));
+
+      const parsed = items
+        .filter(item => {
+          const lat = Number(item.lat);
+          const lon = Number(item.lon);
+          return !isNaN(lat) && !isNaN(lon);
+        })
+        .map((item) => ({
+          ...item,
+          label: formatLocationIQAddress(item.address, item.display_name),
+          latitude: Number(item.lat),
+          longitude: Number(item.lon),
+        }));
       setSuggestions(sortSuggestions(parsed).slice(0, 5));
     } catch (error) {
       // Ignored error to prevent console logs as requested
@@ -78,7 +85,15 @@ export default function AddressAutocomplete({ placeholder, onSelect, style }) {
 
   const handleTextChange = (text) => {
     setQuery(text);
-    setShowList(true);
+    onChangeText?.(text);
+
+    // Se o texto for limpo, reseta as sugestões imediatamente
+    if (text.length < 3) {
+      setSuggestions([]);
+      setShowList(false);
+    } else {
+      setShowList(true);
+    }
 
     if (debounceTimeout.current) {
       clearTimeout(debounceTimeout.current);
@@ -86,17 +101,26 @@ export default function AddressAutocomplete({ placeholder, onSelect, style }) {
 
     debounceTimeout.current = setTimeout(() => {
       fetchSuggestions(text);
-    }, 600);
+    }, 800); // Aumentado para 800ms para reduzir carga enquanto digita
   };
 
   const handleSelect = (item) => {
-    setQuery(item.label || '');
+    const label = item.label || '';
+    const latitude = Number(item.latitude);
+    const longitude = Number(item.longitude);
+
+    if (isNaN(latitude) || isNaN(longitude)) {
+      console.warn('[AddressAutocomplete] Item selecionado possui coordenadas inválidas:', item);
+      return;
+    }
+
+    setQuery(label);
     setShowList(false);
     Keyboard.dismiss();
     onSelect({
-      label: item.label || '',
-      latitude: item.latitude,
-      longitude: item.longitude,
+      label,
+      latitude,
+      longitude,
     });
   };
 

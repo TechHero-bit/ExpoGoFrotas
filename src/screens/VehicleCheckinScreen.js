@@ -43,6 +43,7 @@ export default function VehicleCheckinScreen({ navigation }) {
   // ── Estado do Mapa / Rota ──
   const [routeInfo, setRouteInfo] = useState(null);
   const [routeLoading, setRouteLoading] = useState(false);
+  const [isTyping, setIsTyping] = useState(false); // Pausa atualizações pesadas enquanto digita
   const routeTimeoutRef = useRef(null);
 
   const { refreshJourney } = useJourney();
@@ -52,7 +53,8 @@ export default function VehicleCheckinScreen({ navigation }) {
    * Disparado automaticamente assim que resolvedOrigin e resolvedDestination forem definidos.
    */
   useEffect(() => {
-    if (!resolvedOrigin || !resolvedDestination) {
+    // Se o usuário está digitando ou faltam dados, não calcula rota
+    if (isTyping || !resolvedOrigin || !resolvedDestination) {
       setRouteInfo(null);
       return;
     }
@@ -71,7 +73,7 @@ export default function VehicleCheckinScreen({ navigation }) {
     };
 
     fetchCurrentRoute();
-  }, [resolvedOrigin, resolvedDestination]);
+  }, [resolvedOrigin, resolvedDestination, isTyping]);
 
   useFocusEffect(
     useCallback(() => {
@@ -317,29 +319,33 @@ export default function VehicleCheckinScreen({ navigation }) {
         )}
 
         {selectedVehicle && (
-          <View style={[styles.formCard, { zIndex: 2 }]}>
+          <View style={[styles.formCard, { zIndex: 10 }]}>
             <Text style={styles.formLabel}>Origem</Text>
             <AddressAutocomplete
               placeholder="Digite o endereço de origem..."
-              style={{ zIndex: 3 }}
+              style={{ zIndex: 20 }}
               onSelect={(data) => {
+                setIsTyping(false);
                 setResolvedOrigin(data);
                 setOrigem(data ? data.label : '');
               }}
+              onChangeText={() => setIsTyping(true)}
             />
 
             <Text style={styles.formLabel}>Destino</Text>
             <AddressAutocomplete
               placeholder="Digite o endereço de destino..."
-              style={{ zIndex: 2 }}
+              style={{ zIndex: 15 }}
               onSelect={(data) => {
+                setIsTyping(false);
                 setResolvedDestination(data);
                 setDestino(data ? data.label : '');
               }}
+              onChangeText={() => setIsTyping(true)}
             />
 
             {/* ── Mapa de Rota (Minimizado) ── */}
-            {(resolvedOrigin || resolvedDestination) && (
+            {(resolvedOrigin || resolvedDestination) && !isTyping && (
               <RouteMap
                 origin={resolvedOrigin}
                 destination={resolvedDestination}
