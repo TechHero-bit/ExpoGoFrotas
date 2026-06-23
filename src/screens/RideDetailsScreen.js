@@ -1,5 +1,5 @@
 import { SafeAreaView } from 'react-native-safe-area-context';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     View,
     Text,
@@ -7,7 +7,9 @@ import {
     StyleSheet,
     TouchableOpacity,
     Image,
-    Modal
+    Modal,
+    InteractionManager,
+    ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
@@ -15,6 +17,9 @@ import AdminGuard from '../components/AdminGuard';
 import { supabase } from '../services/supabase';
 import RouteMap from '../components/RouteMap';
 import { fetchRoute, getJourneyRoutePoint, resolveJourneyRoutePoint } from '../services/osrmService';
+
+// Labels para as fotos de veículo (mesma ordem do check-in/checkout)
+const VEHICLE_PHOTO_LABELS = ['Frente', 'Lateral Esq.', 'Lateral Dir.', 'Traseira'];
 
 export default function RideDetailsScreen({ route, navigation }) {
     const { journey } = route.params || {};
@@ -25,22 +30,37 @@ export default function RideDetailsScreen({ route, navigation }) {
     const [routeLoading, setRouteLoading] = useState(false);
     const [routeOrigin, setRouteOrigin] = useState(null);
     const [routeDestination, setRouteDestination] = useState(null);
+    const [screenReady, setScreenReady] = useState(false);
 
-    // Calcular rota quando a tela carrega
+    // Aguardar transição de tela antes de iniciar trabalho pesado
     useEffect(() => {
-        if (!journey?.origem || !journey?.destino) return;
+        const task = InteractionManager.runAfterInteractions(() => {
+            setScreenReady(true);
+        });
+        return () => task.cancel();
+    }, []);
+
+    // Calcular rota SOMENTE após a tela estar pronta (animação concluída)
+    useEffect(() => {
+        if (!screenReady || !journey?.origem || !journey?.destino) return;
+
+        let cancelled = false;
 
         const calcRoute = async () => {
             try {
                 setRouteLoading(true);
                 const originCoord = await resolveJourneyRoutePoint(journey, 'origin');
+                if (cancelled) return;
                 const destCoord = await resolveJourneyRoutePoint(journey, 'destination');
+                if (cancelled) return;
+
                 if (!originCoord || !destCoord) {
                     setRouteOrigin(null);
                     setRouteDestination(null);
                     setRouteInfo(null);
                 } else {
                     const result = await fetchRoute(originCoord, destCoord);
+                    if (cancelled) return;
                     setRouteOrigin(originCoord);
                     setRouteDestination(destCoord);
                     setRouteInfo(result);
@@ -48,12 +68,84 @@ export default function RideDetailsScreen({ route, navigation }) {
             } catch (err) {
                 console.warn('[RideDetails] Erro ao calcular rota:', err.message);
             } finally {
-                setRouteLoading(false);
+                if (!cancelled) setRouteLoading(false);
             }
         };
 
         calcRoute();
-    }, [journey?.origem, journey?.destino]);
+
+        return () => { cancelled = true; };
+    }, [screenReady, journey?.origem, journey?.destino]);
+
+    // ── Dados derivados (memoizados) ──
+    const formatDate = useCallback((dateString) => {
+        if (!dateString) return 'Nao registrado';
+        const date = new Date(dateString);
+        return date.toLocaleString('pt-BR');
+    }, []);
+
+    const { motoristaNome, placa, modelo, distPercorrida } = useMemo(() => {
+        const _motoristaNome = journey?.usuarios?.nome || 'Desconhecido';
+        const _placa = journey?.veiculos?.placa || 'Sem placa';
+        const _modelo = journey?.veiculos?.modelo || 'Veiculo desconhecido';
+
+        let _distPercorrida = 'N/A';
+        if (journey?.km_inicial !== undefined && journey?.km_final !== undefined && journey?.km_final !== null) {
+            _distPercorrida = `${(journey.km_final - journey.km_inicial).toFixed(1)} km`;
+        }
+
+        return {
+            motoristaNome: _motoristaNome,
+            placa: _placa,
+            modelo: _modelo,
+            distPercorrida: _distPercorrida,
+        };
+    }, [journey]);
+
+    // Verificamos se existem fotos reais (ignorando os fallbacks textuais 'sem-imagem' do banco)
+    const hasValidUrl = (url) => url && url !== 'sem-imagem' && typeof url === 'string' && url.length > 5;
+
+    const resolveImageUrl = (pathOrUri) => {
+        if (!hasValidUrl(pathOrUri)) return null;
+
+        // Se for URL web válida ou fallback de teste local, mantém
+        if (pathOrUri.startsWith('http') || pathOrUri.startsWith('file://') || pathOrUri.startsWith('content://')) {
+            return pathOrUri;
+        }
+
+        // Se o banco salvar apenas o ID/Nome do arquivo, resolve com getPublicUrl
+        const { data } = supabase.storage.from('evidencias').getPublicUrl(pathOrUri);
+        return data.publicUrl;
+    };
+
+    const photoData = useMemo(() => {
+        const checkin = journey?.checkins && journey.checkins.length > 0 ? journey.checkins[0] : null;
+        const checkout = journey?.checkouts && journey.checkouts.length > 0 ? journey.checkouts[0] : null;
+
+        const checkinSelfie = resolveImageUrl(checkin?.selfie_uri);
+        const checkoutSelfie = resolveImageUrl(checkout?.selfie_uri);
+        const checkinPainel = resolveImageUrl(checkin?.foto_painel_uri);
+        const checkoutPainel = resolveImageUrl(checkout?.foto_painel_uri);
+
+        const checkinVeiculos = (checkin?.foto_placa_uri || '').split(',').map(url => resolveImageUrl(url.trim())).filter(Boolean);
+        const checkoutVeiculos = (checkout?.foto_veiculo_uri || '').split(',').map(url => resolveImageUrl(url.trim())).filter(Boolean);
+
+        const hasAnyPhoto = checkinSelfie || checkinVeiculos.length > 0 || checkinPainel || checkoutSelfie || checkoutVeiculos.length > 0 || checkoutPainel;
+        const checkinCombustivel = checkin?.nivel_combustivel?.trim() || 'Nao registrado';
+        const checkoutCombustivel = checkout?.nivel_combustivel?.trim() || 'Nao registrado';
+
+        return {
+            checkinSelfie,
+            checkoutSelfie,
+            checkinPainel,
+            checkoutPainel,
+            checkinVeiculos,
+            checkoutVeiculos,
+            hasAnyPhoto,
+            checkinCombustivel,
+            checkoutCombustivel,
+        };
+    }, [journey]);
 
     if (!journey) {
         return (
@@ -71,53 +163,12 @@ export default function RideDetailsScreen({ route, navigation }) {
         );
     }
 
-    const formatDate = (dateString) => {
-        if (!dateString) return 'Nao registrado';
-        const date = new Date(dateString);
-        return date.toLocaleString('pt-BR');
-    };
-
-    const motoristaNome = journey.usuarios?.nome || 'Desconhecido';
-    const placa = journey.veiculos?.placa || 'Sem placa';
-    const modelo = journey.veiculos?.modelo || 'Veiculo desconhecido';
-    
-    // Cálculo de KM se possivel
-    let distPercorrida = 'N/A';
-    if (journey.km_inicial !== undefined && journey.km_final !== undefined && journey.km_final !== null) {
-        distPercorrida = `${(journey.km_final - journey.km_inicial).toFixed(1)} km`;
-    }
-
-    // Lógica para fotos de check-in/out
-    const checkin = journey.checkins && journey.checkins.length > 0 ? journey.checkins[0] : null;
-    const checkout = journey.checkouts && journey.checkouts.length > 0 ? journey.checkouts[0] : null;
-    
-    // Verificamos se existem fotos reais (ignorando os fallbacks textuais 'sem-imagem' do banco)
-    const hasValidUrl = (url) => url && url !== 'sem-imagem' && typeof url === 'string' && url.length > 5;
-    
-    const resolveImageUrl = (pathOrUri) => {
-        if (!hasValidUrl(pathOrUri)) return null;
-        
-        // Se for URL web válida ou fallback de teste local, mantém
-        if (pathOrUri.startsWith('http') || pathOrUri.startsWith('file://') || pathOrUri.startsWith('content://')) {
-            return pathOrUri;
-        }
-        
-        // Se o banco salvar apenas o ID/Nome do arquivo, resolve com getPublicUrl
-        const { data } = supabase.storage.from('evidencias').getPublicUrl(pathOrUri);
-        return data.publicUrl;
-    };
-    
-    const checkinSelfie = resolveImageUrl(checkin?.selfie_uri);
-    const checkoutSelfie = resolveImageUrl(checkout?.selfie_uri);
-    const checkinPainel = resolveImageUrl(checkin?.foto_painel_uri);
-    const checkoutPainel = resolveImageUrl(checkout?.foto_painel_uri);
-
-    const checkinVeiculos = (checkin?.foto_placa_uri || '').split(',').map(url => resolveImageUrl(url.trim())).filter(Boolean);
-    const checkoutVeiculos = (checkout?.foto_veiculo_uri || '').split(',').map(url => resolveImageUrl(url.trim())).filter(Boolean);
-    
-    const hasAnyPhoto = checkinSelfie || checkinVeiculos.length > 0 || checkinPainel || checkoutSelfie || checkoutVeiculos.length > 0 || checkoutPainel;
-    const checkinCombustivel = checkin?.nivel_combustivel?.trim() || 'Nao registrado';
-    const checkoutCombustivel = checkout?.nivel_combustivel?.trim() || 'Nao registrado';
+    const {
+        checkinSelfie, checkoutSelfie,
+        checkinPainel, checkoutPainel,
+        checkinVeiculos, checkoutVeiculos,
+        hasAnyPhoto, checkinCombustivel, checkoutCombustivel
+    } = photoData;
 
     return (
         <AdminGuard navigation={navigation}>
@@ -193,17 +244,24 @@ export default function RideDetailsScreen({ route, navigation }) {
                         </View>
                     </View>
 
-                    {/* Mapa Estático da Rota (Read-only) */}
-                    {journey.origem && journey.destino && (
-                        <RouteMap
-                            origin={routeOrigin || getJourneyRoutePoint(journey, 'origin')}
-                            destination={routeDestination || getJourneyRoutePoint(journey, 'destination')}
-                            routeInfo={routeInfo}
-                            loading={routeLoading}
-                            initialMode="minimized"
-                            isInteractive={false}
-                            showUserLocation={false}
-                        />
+                    {/* Mapa Estático da Rota (Read-only) — Renderizado somente após tela pronta */}
+                    {journey.origem && journey.destino && screenReady && (
+                        routeLoading ? (
+                            <View style={styles.mapLoadingPlaceholder}>
+                                <ActivityIndicator size="small" color={COLORS.primary} />
+                                <Text style={styles.mapLoadingText}>Calculando rota...</Text>
+                            </View>
+                        ) : (
+                            <RouteMap
+                                origin={routeOrigin || getJourneyRoutePoint(journey, 'origin')}
+                                destination={routeDestination || getJourneyRoutePoint(journey, 'destination')}
+                                routeInfo={routeInfo}
+                                loading={false}
+                                initialMode="minimized"
+                                isInteractive={false}
+                                showUserLocation={false}
+                            />
+                        )
                     )}
 
                     {/* Odometro */}
@@ -267,7 +325,7 @@ export default function RideDetailsScreen({ route, navigation }) {
                             <View style={styles.photosRow}>
                                 {checkinSelfie && (
                                     <View style={styles.photoContainer}>
-                                        <Text style={styles.label}>Motorista</Text>
+                                        <Text style={styles.label}>Selfie</Text>
                                         <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(checkinSelfie)}>
                                             <Image source={{ uri: checkinSelfie }} style={styles.photo} resizeMode="cover" />
                                         </TouchableOpacity>
@@ -275,7 +333,7 @@ export default function RideDetailsScreen({ route, navigation }) {
                                 )}
                                 {checkinVeiculos.map((url, index) => (
                                     <View key={index} style={styles.photoContainer}>
-                                        <Text style={styles.label}>Veículo {index + 1}</Text>
+                                        <Text style={styles.label}>{VEHICLE_PHOTO_LABELS[index] || `Veículo ${index + 1}`}</Text>
                                         <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(url)}>
                                             <Image source={{ uri: url }} style={styles.photo} resizeMode="cover" />
                                         </TouchableOpacity>
@@ -292,7 +350,7 @@ export default function RideDetailsScreen({ route, navigation }) {
                             <View style={styles.photosRow}>
                                 {checkoutSelfie && (
                                     <View style={styles.photoContainer}>
-                                        <Text style={styles.label}>Motorista</Text>
+                                        <Text style={styles.label}>Selfie</Text>
                                         <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(checkoutSelfie)}>
                                             <Image source={{ uri: checkoutSelfie }} style={styles.photo} resizeMode="cover" />
                                         </TouchableOpacity>
@@ -300,7 +358,7 @@ export default function RideDetailsScreen({ route, navigation }) {
                                 )}
                                 {checkoutVeiculos.map((url, index) => (
                                     <View key={index} style={styles.photoContainer}>
-                                        <Text style={styles.label}>Veículo {index + 1}</Text>
+                                        <Text style={styles.label}>{VEHICLE_PHOTO_LABELS[index] || `Veículo ${index + 1}`}</Text>
                                         <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(url)}>
                                             <Image source={{ uri: url }} style={styles.photo} resizeMode="cover" />
                                         </TouchableOpacity>
@@ -468,6 +526,22 @@ const styles = StyleSheet.create({
         paddingBottom: SPACING.md,
     },
     
+    // Mapa loading placeholder
+    mapLoadingPlaceholder: {
+        height: 150,
+        borderRadius: BORDER_RADIUS.md,
+        backgroundColor: COLORS.white,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: SPACING.xs,
+    },
+    mapLoadingText: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+    },
+
     // Fotos
     photosRow: {
         flexDirection: 'row',

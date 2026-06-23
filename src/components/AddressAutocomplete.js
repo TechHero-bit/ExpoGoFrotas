@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { View, TextInput, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Keyboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 
-export default function AddressAutocomplete({ placeholder, onSelect, onChangeText, style }) {
+export default memo(function AddressAutocomplete({ placeholder, onSelect, onChangeText, style }) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -83,7 +83,7 @@ export default function AddressAutocomplete({ placeholder, onSelect, onChangeTex
     }
   };
 
-  const handleTextChange = (text) => {
+  const handleTextChange = useCallback((text) => {
     setQuery(text);
     onChangeText?.(text);
 
@@ -102,9 +102,9 @@ export default function AddressAutocomplete({ placeholder, onSelect, onChangeTex
     debounceTimeout.current = setTimeout(() => {
       fetchSuggestions(text);
     }, 800); // Aumentado para 800ms para reduzir carga enquanto digita
-  };
+  }, [onChangeText]);
 
-  const handleSelect = (item) => {
+  const handleSelect = useCallback((item) => {
     const label = item.label || '';
     const latitude = Number(item.latitude);
     const longitude = Number(item.longitude);
@@ -122,14 +122,23 @@ export default function AddressAutocomplete({ placeholder, onSelect, onChangeTex
       latitude,
       longitude,
     });
-  };
+  }, [onSelect]);
 
-  const clearInput = () => {
+  const clearInput = useCallback(() => {
     setQuery('');
     setSuggestions([]);
     setShowList(false);
     onSelect(null);
-  };
+  }, [onSelect]);
+
+  const renderSuggestionItem = useCallback(({ item }) => (
+    <TouchableOpacity style={styles.item} onPress={() => handleSelect(item)}>
+      <Ionicons name="location-outline" size={20} color={COLORS.textSecondary} />
+      <Text style={styles.itemText} numberOfLines={2}>
+        {item.label}
+      </Text>
+    </TouchableOpacity>
+  ), [handleSelect]);
 
   return (
     <View style={[styles.container, style]}>
@@ -156,22 +165,18 @@ export default function AddressAutocomplete({ placeholder, onSelect, onChangeTex
         <View style={styles.dropdown}>
           <FlatList
             data={suggestions}
-            keyExtractor={(item) => item.place_id?.toString() || `${item.lat}-${item.lon}`}
+            keyExtractor={keyExtractor}
             keyboardShouldPersistTaps="handled"
-            renderItem={({ item }) => (
-              <TouchableOpacity style={styles.item} onPress={() => handleSelect(item)}>
-                <Ionicons name="location-outline" size={20} color={COLORS.textSecondary} />
-                <Text style={styles.itemText} numberOfLines={2}>
-                  {item.label}
-                </Text>
-              </TouchableOpacity>
-            )}
+            renderItem={renderSuggestionItem}
+            removeClippedSubviews={true}
           />
         </View>
       )}
     </View>
   );
-}
+});
+
+const keyExtractor = (item) => item.place_id?.toString() || `${item.lat}-${item.lon}`;
 
 const styles = StyleSheet.create({
   container: {

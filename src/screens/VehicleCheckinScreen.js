@@ -51,6 +51,23 @@ export default function VehicleCheckinScreen({ navigation }) {
 
   const { refreshJourney } = useJourney();
 
+  // ── Callbacks estáveis para AddressAutocomplete (evita re-render) ──
+  const handleOriginSelect = useCallback((data) => {
+    setIsTyping(false);
+    setResolvedOrigin(data);
+    setOrigem(data ? data.label : '');
+  }, []);
+
+  const handleDestinationSelect = useCallback((data) => {
+    setIsTyping(false);
+    setResolvedDestination(data);
+    setDestino(data ? data.label : '');
+  }, []);
+
+  const handleTypingStart = useCallback(() => {
+    setIsTyping(true);
+  }, []);
+
   /**
    * Calcula a rota entre Origem e Destino usando OSRM.
    * Disparado automaticamente assim que resolvedOrigin e resolvedDestination forem definidos.
@@ -103,7 +120,7 @@ export default function VehicleCheckinScreen({ navigation }) {
     }, [])
   );
 
-  const pickImage = async (setter) => {
+  const pickImage = useCallback(async (setter) => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permissão negada', 'Preciso de acesso à câmera para tirar a foto do painel.');
@@ -120,7 +137,7 @@ export default function VehicleCheckinScreen({ navigation }) {
       const asset = result.assets[0];
       setter({ uri: asset.uri, base64: asset.base64 });
     }
-  };
+  }, []);
 
   const handleConfirm = async () => {
     // ============================================
@@ -327,24 +344,16 @@ export default function VehicleCheckinScreen({ navigation }) {
             <AddressAutocomplete
               placeholder="Digite o endereço de origem..."
               style={{ zIndex: 20 }}
-              onSelect={(data) => {
-                setIsTyping(false);
-                setResolvedOrigin(data);
-                setOrigem(data ? data.label : '');
-              }}
-              onChangeText={() => setIsTyping(true)}
+              onSelect={handleOriginSelect}
+              onChangeText={handleTypingStart}
             />
 
             <Text style={styles.formLabel}>Destino</Text>
             <AddressAutocomplete
               placeholder="Digite o endereço de destino..."
               style={{ zIndex: 15 }}
-              onSelect={(data) => {
-                setIsTyping(false);
-                setResolvedDestination(data);
-                setDestino(data ? data.label : '');
-              }}
-              onChangeText={() => setIsTyping(true)}
+              onSelect={handleDestinationSelect}
+              onChangeText={handleTypingStart}
             />
 
             {/* ── Mapa de Rota (Minimizado) ── */}

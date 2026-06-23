@@ -124,7 +124,7 @@ export default memo(function RouteMap({
 
     const bounds = getBounds();
     if (bounds) {
-      cameraRef.current.fitBounds(bounds.ne, bounds.sw, 50, 800);
+      cameraRef.current.fitBounds(bounds, 50, 800);
     }
   }, [routeInfo, mapReady, isExpanded]);
 
@@ -133,35 +133,39 @@ export default memo(function RouteMap({
    * Retorna [sw, ne] com padding.
    */
   const getBounds = useCallback(() => {
-    const lngs = [];
-    const lats = [];
+    let minLng = Infinity;
+    let maxLng = -Infinity;
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+    let hasPoints = false;
+
+    const addPoint = (lng, lat) => {
+      if (isValidCoord(lng) && isValidCoord(lat)) {
+        if (lng < minLng) minLng = lng;
+        if (lng > maxLng) maxLng = lng;
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+        hasPoints = true;
+      }
+    };
 
     if (origin && isValidCoord(origin.latitude) && isValidCoord(origin.longitude)) {
-      lngs.push(origin.longitude);
-      lats.push(origin.latitude);
+      addPoint(origin.longitude, origin.latitude);
     }
 
     if (destination && isValidCoord(destination.latitude) && isValidCoord(destination.longitude)) {
-      lngs.push(destination.longitude);
-      lats.push(destination.latitude);
+      addPoint(destination.longitude, destination.latitude);
     }
 
     // Adicionar coordenadas da rota para bounds mais precisos
     if (routeInfo?.geometry?.geometry?.coordinates) {
-      routeInfo.geometry.geometry.coordinates.forEach(([lng, lat]) => {
-        if (isValidCoord(lng) && isValidCoord(lat)) {
-          lngs.push(lng);
-          lats.push(lat);
-        }
-      });
+      const coords = routeInfo.geometry.geometry.coordinates;
+      for (let i = 0; i < coords.length; i++) {
+        addPoint(coords[i][0], coords[i][1]);
+      }
     }
 
-    if (lngs.length === 0 || lats.length === 0) return null;
-
-    const minLng = Math.min(...lngs);
-    const maxLng = Math.max(...lngs);
-    const minLat = Math.min(...lats);
-    const maxLat = Math.max(...lats);
+    if (!hasPoints) return null;
 
     // MapLibre Camera bounds expects an array: [west, south, east, north]
     // which corresponds to [minLon, minLat, maxLon, maxLat]
