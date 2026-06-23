@@ -108,13 +108,14 @@ export default function RideDetailsScreen({ route, navigation }) {
     };
     
     const checkinSelfie = resolveImageUrl(checkin?.selfie_uri);
-    const checkinPlaca = resolveImageUrl(checkin?.foto_placa_uri);
     const checkoutSelfie = resolveImageUrl(checkout?.selfie_uri);
-    const checkoutVeiculo = resolveImageUrl(checkout?.foto_veiculo_uri);
     const checkinPainel = resolveImageUrl(checkin?.foto_painel_uri);
     const checkoutPainel = resolveImageUrl(checkout?.foto_painel_uri);
+
+    const checkinVeiculos = (checkin?.foto_placa_uri || '').split(',').map(url => resolveImageUrl(url.trim())).filter(Boolean);
+    const checkoutVeiculos = (checkout?.foto_veiculo_uri || '').split(',').map(url => resolveImageUrl(url.trim())).filter(Boolean);
     
-    const hasAnyPhoto = checkinSelfie || checkinPlaca || checkinPainel || checkoutSelfie || checkoutVeiculo || checkoutPainel;
+    const hasAnyPhoto = checkinSelfie || checkinVeiculos.length > 0 || checkinPainel || checkoutSelfie || checkoutVeiculos.length > 0 || checkoutPainel;
     const checkinCombustivel = checkin?.nivel_combustivel?.trim() || 'Nao registrado';
     const checkoutCombustivel = checkout?.nivel_combustivel?.trim() || 'Nao registrado';
 
@@ -260,7 +261,7 @@ export default function RideDetailsScreen({ route, navigation }) {
                     </View>
 
                     {/* Fotos de Check-in */}
-                    {(checkinSelfie || checkinPlaca) && (
+                    {(checkinSelfie || checkinVeiculos.length > 0) && (
                         <View style={styles.card}>
                             <Text style={styles.sectionTitle}>Fotos do Check-in</Text>
                             <View style={styles.photosRow}>
@@ -272,20 +273,20 @@ export default function RideDetailsScreen({ route, navigation }) {
                                         </TouchableOpacity>
                                     </View>
                                 )}
-                                {checkinPlaca && (
-                                    <View style={styles.photoContainer}>
-                                        <Text style={styles.label}>Placa</Text>
-                                        <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(checkinPlaca)}>
-                                            <Image source={{ uri: checkinPlaca }} style={styles.photo} resizeMode="cover" />
+                                {checkinVeiculos.map((url, index) => (
+                                    <View key={index} style={styles.photoContainer}>
+                                        <Text style={styles.label}>Veículo {index + 1}</Text>
+                                        <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(url)}>
+                                            <Image source={{ uri: url }} style={styles.photo} resizeMode="cover" />
                                         </TouchableOpacity>
                                     </View>
-                                )}
+                                ))}
                             </View>
                         </View>
                     )}
 
                     {/* Fotos de Check-out */}
-                    {(checkoutSelfie || checkoutVeiculo) && (
+                    {(checkoutSelfie || checkoutVeiculos.length > 0) && (
                         <View style={styles.card}>
                             <Text style={styles.sectionTitle}>Fotos do Check-out</Text>
                             <View style={styles.photosRow}>
@@ -297,14 +298,14 @@ export default function RideDetailsScreen({ route, navigation }) {
                                         </TouchableOpacity>
                                     </View>
                                 )}
-                                {checkoutVeiculo && (
-                                    <View style={styles.photoContainer}>
-                                        <Text style={styles.label}>Veiculo</Text>
-                                        <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(checkoutVeiculo)}>
-                                            <Image source={{ uri: checkoutVeiculo }} style={styles.photo} resizeMode="cover" />
+                                {checkoutVeiculos.map((url, index) => (
+                                    <View key={index} style={styles.photoContainer}>
+                                        <Text style={styles.label}>Veículo {index + 1}</Text>
+                                        <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(url)}>
+                                            <Image source={{ uri: url }} style={styles.photo} resizeMode="cover" />
                                         </TouchableOpacity>
                                     </View>
-                                )}
+                                ))}
                             </View>
                         </View>
                     )}
@@ -470,6 +471,7 @@ const styles = StyleSheet.create({
     // Fotos
     photosRow: {
         flexDirection: 'row',
+        flexWrap: 'wrap',
         gap: SPACING.md,
         marginTop: SPACING.xs,
     },
@@ -501,7 +503,7 @@ const styles = StyleSheet.create({
     },
 
     photoContainer: {
-        flex: 1,
+        width: '45%',
         gap: 4,
     },
     photo: {

@@ -27,7 +27,10 @@ export default function VehicleCheckoutScreen({ navigation }) {
   const [kmFinal, setKmFinal] = useState('');
   const [combustivel, setCombustivel] = useState('');
   const [selfieUri, setSelfieUri] = useState(null);
-  const [vehiclePhotoUri, setVehiclePhotoUri] = useState(null);
+  const [frenteUri, setFrenteUri] = useState(null);
+  const [lateralEsqUri, setLateralEsqUri] = useState(null);
+  const [lateralDirUri, setLateralDirUri] = useState(null);
+  const [traseiraUri, setTraseiraUri] = useState(null);
   const [painelUri, setPainelUri] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -142,7 +145,7 @@ export default function VehicleCheckoutScreen({ navigation }) {
         nivelCombustivel: combustivel,
         observacoes: observations,
         selfieUrl: selfieUri,
-        veiculoFotoUrl: vehiclePhotoUri,
+        fotosVeiculoUrl: [frenteUri, lateralEsqUri, lateralDirUri, traseiraUri],
         painelUrl: painelUri,
       });
 
@@ -212,6 +215,7 @@ export default function VehicleCheckoutScreen({ navigation }) {
               value={kmFinal}
               onChangeText={setKmFinal}
               placeholder="Ex: 50420"
+              placeholderTextColor={COLORS.gray600}
               keyboardType="numeric"
               style={styles.input}
             />
@@ -226,6 +230,7 @@ export default function VehicleCheckoutScreen({ navigation }) {
               value={combustivel}
               onChangeText={setCombustivel}
               placeholder="Ex: Meio tanque, reserva"
+              placeholderTextColor={COLORS.gray600}
               style={styles.input}
             />
           </View>
@@ -254,6 +259,7 @@ export default function VehicleCheckoutScreen({ navigation }) {
             value={observations}
             onChangeText={setObservations}
             placeholder="Descreva avarias, ocorrências ou detalhes adicionais"
+            placeholderTextColor={COLORS.gray600}
             style={[styles.input, styles.textArea]}
             multiline
             numberOfLines={4}
@@ -262,14 +268,26 @@ export default function VehicleCheckoutScreen({ navigation }) {
         </View>
 
         <Text style={styles.sectionTitle}>Fotos de Conferência</Text>
-        <View style={styles.photoRow}>
-          <TouchableOpacity style={styles.photoCard} onPress={() => pickImage(setSelfieUri)} activeOpacity={0.85}>
+        <View style={styles.photoPickerGrid}>
+          <TouchableOpacity style={styles.photoCardHalf} onPress={() => pickImage(setSelfieUri)} activeOpacity={0.85}>
             {selfieUri ? <Image source={{ uri: selfieUri.uri }} style={styles.photoPreview} /> : <Ionicons name="camera-outline" size={28} color={COLORS.gray500} />}
             <Text style={styles.photoLabel}>Selfie</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.photoCard} onPress={() => pickImage(setVehiclePhotoUri)} activeOpacity={0.85}>
-            {vehiclePhotoUri ? <Image source={{ uri: vehiclePhotoUri.uri }} style={styles.photoPreview} /> : <Ionicons name="car-outline" size={28} color={COLORS.gray500} />}
-            <Text style={styles.photoLabel}>Veículo</Text>
+          <TouchableOpacity style={styles.photoCardHalf} onPress={() => pickImage(setFrenteUri)} activeOpacity={0.85}>
+            {frenteUri ? <Image source={{ uri: frenteUri.uri }} style={styles.photoPreview} /> : <Ionicons name="car-outline" size={28} color={COLORS.gray500} />}
+            <Text style={styles.photoLabel}>Frente</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.photoCardHalf} onPress={() => pickImage(setLateralEsqUri)} activeOpacity={0.85}>
+            {lateralEsqUri ? <Image source={{ uri: lateralEsqUri.uri }} style={styles.photoPreview} /> : <Ionicons name="car-outline" size={28} color={COLORS.gray500} />}
+            <Text style={styles.photoLabel}>Lateral Esq.</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.photoCardHalf} onPress={() => pickImage(setLateralDirUri)} activeOpacity={0.85}>
+            {lateralDirUri ? <Image source={{ uri: lateralDirUri.uri }} style={styles.photoPreview} /> : <Ionicons name="car-outline" size={28} color={COLORS.gray500} />}
+            <Text style={styles.photoLabel}>Lateral Dir.</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.photoCardHalf} onPress={() => pickImage(setTraseiraUri)} activeOpacity={0.85}>
+            {traseiraUri ? <Image source={{ uri: traseiraUri.uri }} style={styles.photoPreview} /> : <Ionicons name="car-outline" size={28} color={COLORS.gray500} />}
+            <Text style={styles.photoLabel}>Traseira</Text>
           </TouchableOpacity>
         </View>
 
@@ -322,8 +340,21 @@ const styles = StyleSheet.create({
   textArea: { minHeight: 110, paddingTop: SPACING.sm },
   sectionTitle: { fontSize: 16, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm },
   photoRow: { flexDirection: 'row', gap: SPACING.sm },
+  photoPickerGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginTop: SPACING.sm },
   photoCard: {
     flex: 1,
+    minHeight: 120,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    padding: SPACING.sm,
+  },
+  photoCardHalf: {
+    width: '48%',
     minHeight: 120,
     borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,

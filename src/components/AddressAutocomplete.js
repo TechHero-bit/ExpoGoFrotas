@@ -138,6 +138,7 @@ export default function AddressAutocomplete({ placeholder, onSelect, onChangeTex
         <TextInput
           style={styles.input}
           placeholder={placeholder}
+          placeholderTextColor={COLORS.gray600}
           value={query}
           onChangeText={handleTextChange}
           onFocus={() => { if (query.length >= 3) setShowList(true); }}

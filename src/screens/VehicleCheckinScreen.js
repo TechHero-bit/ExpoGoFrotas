@@ -34,7 +34,10 @@ export default function VehicleCheckinScreen({ navigation }) {
   const [resolvedDestination, setResolvedDestination] = useState(null);
   const [combustivel, setCombustivel] = useState('');
   const [selfieUri, setSelfieUri] = useState(null);
-  const [placaUri, setPlacaUri] = useState(null);
+  const [frenteUri, setFrenteUri] = useState(null);
+  const [lateralEsqUri, setLateralEsqUri] = useState(null);
+  const [lateralDirUri, setLateralDirUri] = useState(null);
+  const [traseiraUri, setTraseiraUri] = useState(null);
   const [painelUri, setPainelUri] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -186,7 +189,7 @@ export default function VehicleCheckinScreen({ navigation }) {
         kmInicial: kmNumerico,
         nivelCombustivel: combustivel,
         selfieUrl: selfieUri,
-        placaUrl: placaUri,
+        fotosVeiculoUrl: [frenteUri, lateralEsqUri, lateralDirUri, traseiraUri],
         painelUrl: painelUri,
         origem: origem.trim(),
         destino: destino.trim(),
@@ -363,6 +366,7 @@ export default function VehicleCheckinScreen({ navigation }) {
               onChangeText={setKmInicial}
               keyboardType="numeric"
               placeholder="Ex: 49876"
+              placeholderTextColor={COLORS.gray600}
               style={styles.input}
             />
 
@@ -371,6 +375,7 @@ export default function VehicleCheckinScreen({ navigation }) {
               value={combustivel}
               onChangeText={setCombustivel}
               placeholder="Ex: 3/4, 70%, tanque cheio"
+              placeholderTextColor={COLORS.gray600}
               style={styles.input}
             />
 
@@ -392,14 +397,26 @@ export default function VehicleCheckinScreen({ navigation }) {
             ) : null}
 
             <Text style={styles.formLabel}>Comprovante</Text>
-            <View style={styles.photoPickerRow}>
-              <TouchableOpacity style={styles.photoCard} onPress={() => pickImage(setSelfieUri)} activeOpacity={0.85}>
+            <View style={styles.photoPickerGrid}>
+              <TouchableOpacity style={styles.photoCardHalf} onPress={() => pickImage(setSelfieUri)} activeOpacity={0.85}>
                 {selfieUri ? <Image source={{ uri: selfieUri.uri }} style={styles.photoPreview} /> : <Ionicons name="camera-outline" size={28} color={COLORS.gray500} />}
                 <Text style={styles.photoLabel}>Selfie</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.photoCard} onPress={() => pickImage(setPlacaUri)} activeOpacity={0.85}>
-                {placaUri ? <Image source={{ uri: placaUri.uri }} style={styles.photoPreview} /> : <Ionicons name="car-outline" size={28} color={COLORS.gray500} />}
-                <Text style={styles.photoLabel}>Placa</Text>
+              <TouchableOpacity style={styles.photoCardHalf} onPress={() => pickImage(setFrenteUri)} activeOpacity={0.85}>
+                {frenteUri ? <Image source={{ uri: frenteUri.uri }} style={styles.photoPreview} /> : <Ionicons name="car-outline" size={28} color={COLORS.gray500} />}
+                <Text style={styles.photoLabel}>Frente</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.photoCardHalf} onPress={() => pickImage(setLateralEsqUri)} activeOpacity={0.85}>
+                {lateralEsqUri ? <Image source={{ uri: lateralEsqUri.uri }} style={styles.photoPreview} /> : <Ionicons name="car-outline" size={28} color={COLORS.gray500} />}
+                <Text style={styles.photoLabel}>Lateral Esq.</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.photoCardHalf} onPress={() => pickImage(setLateralDirUri)} activeOpacity={0.85}>
+                {lateralDirUri ? <Image source={{ uri: lateralDirUri.uri }} style={styles.photoPreview} /> : <Ionicons name="car-outline" size={28} color={COLORS.gray500} />}
+                <Text style={styles.photoLabel}>Lateral Dir.</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.photoCardHalf} onPress={() => pickImage(setTraseiraUri)} activeOpacity={0.85}>
+                {traseiraUri ? <Image source={{ uri: traseiraUri.uri }} style={styles.photoPreview} /> : <Ionicons name="car-outline" size={28} color={COLORS.gray500} />}
+                <Text style={styles.photoLabel}>Traseira</Text>
               </TouchableOpacity>
             </View>
 
@@ -475,8 +492,21 @@ const styles = StyleSheet.create({
   fuelOptionText: { fontSize: 12, color: COLORS.textSecondary },
   fuelOptionTextActive: { color: COLORS.white },
   photoPickerRow: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm },
+  photoPickerGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginTop: SPACING.sm },
   photoCard: {
     flex: 1,
+    minHeight: 112,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    padding: SPACING.sm,
+  },
+  photoCardHalf: {
+    width: '48%',
     minHeight: 112,
     borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,

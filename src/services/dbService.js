@@ -201,7 +201,7 @@ export async function fetchVeiculoById(veiculoId) {
   return dataSingle;
 }
 
-export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial, nivelCombustivel, selfieUrl, placaUrl, painelUrl, origem, destino, origemCoords, destinoCoords }) {
+export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial, nivelCombustivel, selfieUrl, fotosVeiculoUrl = [], painelUrl, origem, destino, origemCoords, destinoCoords }) {
   try {
     // ============================================
     // 1. VALIDAÇÃO DE ENTRADA
@@ -339,15 +339,24 @@ export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial,
     const uploadedPaths = [];
     try {
       const selfieUpload = selfieUrl ? await uploadImageToSupabase(selfieUrl, `checkin_selfie_${jornada.id}`) : null;
-      const placaUpload = placaUrl ? await uploadImageToSupabase(placaUrl, `checkin_placa_${jornada.id}`) : null;
       const painelUpload = painelUrl ? await uploadImageToSupabase(painelUrl, `checkin_painel_${jornada.id}`) : null;
 
+      const fotosVeiculoUrls = [];
+      for (let i = 0; i < fotosVeiculoUrl.length; i++) {
+        if (fotosVeiculoUrl[i]) {
+          const upload = await uploadImageToSupabase(fotosVeiculoUrl[i], `checkin_veiculo_${jornada.id}_${i}`);
+          if (upload) {
+            fotosVeiculoUrls.push(upload.publicUrl);
+            uploadedPaths.push(upload.path);
+          }
+        }
+      }
+
       const finalSelfieUrl = selfieUpload ? selfieUpload.publicUrl : null;
-      const finalPlacaUrl = placaUpload ? placaUpload.publicUrl : null;
+      const finalPlacaUrl = fotosVeiculoUrls.length > 0 ? fotosVeiculoUrls.join(',') : null;
       const finalPainelUrl = painelUpload ? painelUpload.publicUrl : null;
 
       if (selfieUpload && selfieUpload.path) uploadedPaths.push(selfieUpload.path);
-      if (placaUpload && placaUpload.path) uploadedPaths.push(placaUpload.path);
       if (painelUpload && painelUpload.path) uploadedPaths.push(painelUpload.path);
 
       console.log('[LOGITRACK] Inserindo dados de check-in...');
@@ -470,7 +479,7 @@ export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial,
   }
 }
 
-export async function finishJourney({ jornadaId, veiculoId, kmFinal, nivelCombustivel, observacoes, selfieUrl, veiculoFotoUrl, painelUrl }) {
+export async function finishJourney({ jornadaId, veiculoId, kmFinal, nivelCombustivel, observacoes, selfieUrl, fotosVeiculoUrl = [], painelUrl }) {
   try {
     console.log('[LOGITRACK] Iniciando finishJourney com params:', {
       jornadaId,
@@ -500,15 +509,25 @@ export async function finishJourney({ jornadaId, veiculoId, kmFinal, nivelCombus
     // ============================================
     console.log('[LOGITRACK] Realizando upload das fotos de check-out...');
     const uploadedPaths = [];
-    const selfieUpload = await uploadImageToSupabase(selfieUrl, `checkout_selfie_${jornadaId}`);
-    const veiculoUpload = await uploadImageToSupabase(veiculoFotoUrl, `checkout_veiculo_${jornadaId}`);
-    const painelUpload = await uploadImageToSupabase(painelUrl, `checkout_painel_${veiculoIdInt}`);
+    const selfieUpload = selfieUrl ? await uploadImageToSupabase(selfieUrl, `checkout_selfie_${jornadaId}`) : null;
+    const painelUpload = painelUrl ? await uploadImageToSupabase(painelUrl, `checkout_painel_${veiculoIdInt}`) : null;
+
+    const fotosVeiculoUrls = [];
+    for (let i = 0; i < fotosVeiculoUrl.length; i++) {
+      if (fotosVeiculoUrl[i]) {
+        const upload = await uploadImageToSupabase(fotosVeiculoUrl[i], `checkout_veiculo_${jornadaId}_${i}`);
+        if (upload) {
+          fotosVeiculoUrls.push(upload.publicUrl);
+          uploadedPaths.push(upload.path);
+        }
+      }
+    }
+
     const finalSelfieUrl = selfieUpload ? selfieUpload.publicUrl : null;
-    const finalVeiculoUrl = veiculoUpload ? veiculoUpload.publicUrl : null;
+    const finalVeiculoUrl = fotosVeiculoUrls.length > 0 ? fotosVeiculoUrls.join(',') : null;
     const finalPainelUrl = painelUpload ? painelUpload.publicUrl : null;
 
     if (selfieUpload && selfieUpload.path) uploadedPaths.push(selfieUpload.path);
-    if (veiculoUpload && veiculoUpload.path) uploadedPaths.push(veiculoUpload.path);
     if (painelUpload && painelUpload.path) uploadedPaths.push(painelUpload.path);
 
     console.log('[LOGITRACK] Inserindo checkout...');
