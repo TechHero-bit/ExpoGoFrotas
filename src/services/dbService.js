@@ -672,3 +672,54 @@ export async function fetchAllJourneys() {
 
   return jornadasComFotos;
 }
+
+export async function updateVehicle(id, updates) {
+  const { data, error } = await supabase
+    .from('veiculos')
+    .update(updates)
+    .eq('id', id);
+
+  if (error) {
+    throw error;
+  }
+  return data;
+}
+
+export async function fetchAdmins() {
+  const { data, error } = await supabase
+    .from('usuarios')
+    .select('id, nome, email')
+    .in('role', ['adm', 'admin'])
+    .order('nome', { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+  return data;
+}
+
+export async function fetchNotifications(userId) {
+  const { data, error } = await supabase
+    .from('notificacoes')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+  return data;
+}
+
+export async function markNotificationsAsRead(userId) {
+  const { data, error } = await supabase
+    .from('notificacoes')
+    .update({ lida: true })
+    .eq('user_id', userId)
+    .eq('lida', false);
+
+  if (error) {
+    throw error;
+  }
+  return data;
+}

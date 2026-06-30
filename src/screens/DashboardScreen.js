@@ -6,21 +6,61 @@ import {
     TouchableOpacity,
     StyleSheet,
     Image,
-    ActivityIndicator
+    ActivityIndicator,
+    Modal,
+    FlatList
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 import { supabase } from '../services/supabase';
-import { fetchUserProfile, fetchDashboardMetrics } from '../services/dbService';
+import { fetchUserProfile, fetchDashboardMetrics, fetchNotifications, markNotificationsAsRead } from '../services/dbService';
 import { useJourney } from '../contexts/JourneyContext';
+
+function formatRelativeTime(dateString) {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return 'Agora';
+    if (diffMins < 60) return `há ${diffMins} min`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `há ${diffHours} h`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `há ${diffDays} d`;
+}
 
 export default function DashboardScreen({ navigation }) {
     const [profile, setProfile] = useState(null);
     const [metrics, setMetrics] = useState({ disponiveis: 0, emRota: 0, manutencao: 0 });
     const [loading, setLoading] = useState(true);
+    const [notifications, setNotifications] = useState([]);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [modalVisible, setModalVisible] = useState(false);
 
     const { activeJourney, refreshJourney } = useJourney();
+
+    React.useEffect(() => {
+        if (!profile?.id) return;
+
+        const channel = supabase
+            .channel('public:notificacoes')
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'notificacoes', filter: `user_id=eq.${profile.id}` },
+                (payload) => {
+                    setNotifications(prev => [payload.new, ...prev]);
+                    setUnreadCount(prev => prev + 1);
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [profile?.id]);
 
     // useFocusEffect: recarrega dados toda vez que a tela ganha foco
     useFocusEffect(
@@ -43,10 +83,21 @@ export default function DashboardScreen({ navigation }) {
                         refreshJourney(),
                     ]);
 
+                    let notifs = [];
+                    let unread = 0;
+                    try {
+                        notifs = await fetchNotifications(userId);
+                        unread = notifs.filter(n => !n.lida).length;
+                    } catch (e) {
+                        console.warn('Erro ao carregar notificacoes', e);
+                    }
+
                     if (isActive) {
                         console.log('[DEBUG LOGITRACK] DashboardScreen loadData results:', { userId, userProfile, dashboardMetrics });
                         setProfile(userProfile);
                         setMetrics(dashboardMetrics);
+                        setNotifications(notifs);
+                        setUnreadCount(unread);
                     }
                 } catch (error) {
                     console.warn('Erro ao carregar dashboard', error);
@@ -73,6 +124,19 @@ export default function DashboardScreen({ navigation }) {
         }
     };
 
+    const handleOpenNotifications = async () => {
+        setModalVisible(true);
+        if (unreadCount > 0 && profile?.id) {
+            try {
+                await markNotificationsAsRead(profile.id);
+                setUnreadCount(0);
+                setNotifications(prev => prev.map(n => ({ ...n, lida: true })));
+            } catch (err) {
+                console.error('Erro ao marcar notificações como lidas', err);
+            }
+        }
+    };
+
     if (loading) {
         return (
             <SafeAreaView style={styles.loadingContainer}>
@@ -93,8 +157,13 @@ export default function DashboardScreen({ navigation }) {
                         <Text style={styles.userName}>{profile?.nome ?? 'Gestor de Frota'}</Text>
                     </View>
                 </View>
-                <TouchableOpacity style={styles.bellBtn}>
+                <TouchableOpacity style={styles.bellBtn} onPress={handleOpenNotifications}>
                     <Ionicons name="notifications-outline" size={24} color={COLORS.gray700} />
+                    {unreadCount > 0 && (
+                        <View style={styles.badge}>
+                            <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+                        </View>
+                    )}
                 </TouchableOpacity>
             </View>
 
@@ -159,6 +228,41 @@ export default function DashboardScreen({ navigation }) {
                     <Text style={styles.secondaryButtonText}>Ver Frota</Text>
                 </TouchableOpacity>
             </View>
+
+            {/* Modal de Notificações */}
+            <Modal visible={modalVisible} animationType="slide" transparent={true} onRequestClose={() => setModalVisible(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Notificações</Text>
+                            <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeBtn}>
+                                <Ionicons name="close" size={24} color={COLORS.text} />
+                            </TouchableOpacity>
+                        </View>
+                        {notifications.length === 0 ? (
+                            <Text style={styles.emptyNotifText}>Nenhuma notificação no momento.</Text>
+                        ) : (
+                            <FlatList
+                                data={notifications}
+                                keyExtractor={item => item.id}
+                                showsVerticalScrollIndicator={false}
+                                contentContainerStyle={styles.notifList}
+                                renderItem={({ item }) => (
+                                    <View style={[styles.notifRow, !item.lida && styles.notifUnread]}>
+                                        <View style={styles.notifIconContainer}>
+                                            <Ionicons name="car-sport" size={20} color={COLORS.primary} />
+                                        </View>
+                                        <View style={styles.notifTextContainer}>
+                                            <Text style={styles.notifMessage}>{item.mensagem}</Text>
+                                            <Text style={styles.notifTime}>{formatRelativeTime(item.created_at)}</Text>
+                                        </View>
+                                    </View>
+                                )}
+                            />
+                        )}
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -284,4 +388,30 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     secondaryButtonText: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '700' },
+    badge: {
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        backgroundColor: COLORS.danger || '#FF3B30',
+        borderRadius: 10,
+        minWidth: 18,
+        height: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 4,
+    },
+    badgeText: { color: COLORS.white, fontSize: 10, fontWeight: '700' },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    modalContent: { backgroundColor: COLORS.white, borderTopLeftRadius: BORDER_RADIUS.xl, borderTopRightRadius: BORDER_RADIUS.xl, maxHeight: '80%', padding: SPACING.md },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md },
+    modalTitle: { fontSize: 20, fontWeight: '800', color: COLORS.text },
+    closeBtn: { padding: SPACING.xs },
+    emptyNotifText: { textAlign: 'center', color: COLORS.textSecondary, marginVertical: SPACING.xl },
+    notifList: { paddingBottom: SPACING.xl },
+    notifRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.border, gap: SPACING.sm },
+    notifUnread: { backgroundColor: COLORS.gray100, borderRadius: BORDER_RADIUS.sm, paddingHorizontal: SPACING.sm },
+    notifIconContainer: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#E6F0FF', justifyContent: 'center', alignItems: 'center' },
+    notifTextContainer: { flex: 1 },
+    notifMessage: { fontSize: 14, color: COLORS.text, fontWeight: '600', lineHeight: 20 },
+    notifTime: { fontSize: 12, color: COLORS.textSecondary, marginTop: 4 },
 });

@@ -6,18 +6,30 @@ import {
     ScrollView,
     StyleSheet,
     ActivityIndicator,
-    TouchableOpacity
+    TouchableOpacity,
+    Modal,
+    TextInput,
+    Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 import { useFocusEffect } from '@react-navigation/native';
-import { fetchVeiculos } from '../services/dbService';
+import { fetchVeiculos, fetchAdmins, updateVehicle } from '../services/dbService';
 import { AdminOnly } from '../components/AdminGuard';
 
 export default function FleetScreen({ navigation }) {
     const [veiculos, setVeiculos] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+
+    // Edit State
+    const [editModalVisible, setEditModalVisible] = useState(false);
+    const [editingVehicle, setEditingVehicle] = useState(null);
+    const [editPlaca, setEditPlaca] = useState('');
+    const [editModelo, setEditModelo] = useState('');
+    const [editResponsavel, setEditResponsavel] = useState('');
+    const [admins, setAdmins] = useState([]);
+    const [saving, setSaving] = useState(false);
 
     useFocusEffect(
         useCallback(() => {
@@ -26,9 +38,13 @@ export default function FleetScreen({ navigation }) {
             const loadVehicles = async () => {
                 try {
                     setLoading(true);
-                    const data = await fetchVeiculos();
+                    const [data, adminsData] = await Promise.all([
+                        fetchVeiculos(),
+                        fetchAdmins()
+                    ]);
                     if (isActive) {
                         setVeiculos(data || []);
+                        setAdmins(adminsData || []);
                     }
                 } catch (loadError) {
                     if (isActive) {
@@ -53,9 +69,38 @@ export default function FleetScreen({ navigation }) {
     const countByStatus = (status) => veiculos.filter((vehicle) => vehicle.status === status).length;
 
     const getBadgeStyle = (status) => {
-        if (status === 'Disponivel') return styles.statusAvailable;
-        if (status === 'Manutencao') return styles.statusWarning;
+        if (status === 'Disponível' || status === 'Disponivel') return styles.statusAvailable;
+        if (status === 'Manutenção' || status === 'Manutencao') return styles.statusWarning;
         return styles.statusActive;
+    };
+
+    const handleSaveEdit = async () => {
+        if (!editPlaca.trim() || !editModelo.trim()) {
+            Alert.alert('Erro', 'Placa e Modelo são obrigatórios.');
+            return;
+        }
+
+        try {
+            setSaving(true);
+            await updateVehicle(editingVehicle.id, {
+                placa: editPlaca.trim().toUpperCase(),
+                modelo: editModelo.trim(),
+                responsavel_id: editResponsavel || null
+            });
+            
+            Alert.alert('Sucesso', 'Veículo atualizado!');
+            setEditModalVisible(false);
+            
+            // Recarregar veículos
+            const data = await fetchVeiculos();
+            setVeiculos(data || []);
+            
+        } catch (err) {
+            Alert.alert('Erro', 'Não foi possível atualizar o veículo.');
+            console.error(err);
+        } finally {
+            setSaving(false);
+        }
     };
 
     if (loading) {
@@ -132,15 +177,88 @@ export default function FleetScreen({ navigation }) {
                                     <Ionicons name="location-outline" size={16} color={COLORS.primary} />
                                     <Text style={styles.infoText}>{vehicle.localizacao || 'Nao informado'}</Text>
                                 </View>
-                                <View style={styles.infoBlock}>
-                                    <Ionicons name="time-outline" size={16} color={COLORS.primary} />
-                                    <Text style={styles.infoText}>ETA {vehicle.eta || '-'}</Text>
-                                </View>
+                                <AdminOnly>
+                                    <TouchableOpacity 
+                                        style={styles.editButton}
+                                        onPress={() => {
+                                            setEditingVehicle(vehicle);
+                                            setEditPlaca(vehicle.placa);
+                                            setEditModelo(vehicle.modelo);
+                                            setEditResponsavel(vehicle.responsavel_id || '');
+                                            setEditModalVisible(true);
+                                        }}
+                                    >
+                                        <Ionicons name="pencil" size={16} color={COLORS.primary} />
+                                        <Text style={styles.editButtonText}>Editar</Text>
+                                    </TouchableOpacity>
+                                </AdminOnly>
                             </View>
                         </View>
                     ))
                 )}
             </ScrollView>
+
+            <Modal visible={editModalVisible} animationType="slide" transparent={true} onRequestClose={() => setEditModalVisible(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Editar Veículo</Text>
+                            <TouchableOpacity onPress={() => setEditModalVisible(false)} style={styles.closeBtn}>
+                                <Ionicons name="close" size={24} color={COLORS.text} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <View style={styles.field}>
+                            <Text style={styles.label}>Placa *</Text>
+                            <TextInput
+                                style={styles.input}
+                                value={editPlaca}
+                                onChangeText={setEditPlaca}
+                                autoCapitalize="characters"
+                            />
+                        </View>
+                        <View style={styles.field}>
+                            <Text style={styles.label}>Modelo *</Text>
+                            <TextInput
+                                style={styles.input}
+                                value={editModelo}
+                                onChangeText={setEditModelo}
+                            />
+                        </View>
+                        
+                        <View style={styles.field}>
+                            <Text style={styles.label}>Responsável</Text>
+                            <View style={styles.pickerContainer}>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                    <TouchableOpacity 
+                                        style={[styles.adminChip, editResponsavel === '' && styles.adminChipSelected]}
+                                        onPress={() => setEditResponsavel('')}
+                                    >
+                                        <Text style={[styles.adminChipText, editResponsavel === '' && styles.adminChipTextSelected]}>Nenhum</Text>
+                                    </TouchableOpacity>
+                                    {admins.map(admin => (
+                                        <TouchableOpacity 
+                                            key={admin.id}
+                                            style={[styles.adminChip, editResponsavel === admin.id && styles.adminChipSelected]}
+                                            onPress={() => setEditResponsavel(admin.id)}
+                                        >
+                                            <Text style={[styles.adminChipText, editResponsavel === admin.id && styles.adminChipTextSelected]}>{admin.nome}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                            </View>
+                        </View>
+
+                        <TouchableOpacity 
+                            style={[styles.saveButton, saving && { opacity: 0.7 }]} 
+                            onPress={handleSaveEdit}
+                            disabled={saving}
+                        >
+                            {saving ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.saveButtonText}>Salvar Alterações</Text>}
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -220,4 +338,21 @@ const styles = StyleSheet.create({
     infoText: { fontSize: 13, color: COLORS.textSecondary },
     errorText: { color: COLORS.danger, paddingHorizontal: SPACING.md },
     emptyText: { paddingHorizontal: SPACING.md, color: COLORS.textSecondary, textAlign: 'center', marginTop: SPACING.md },
+    editButton: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: BORDER_RADIUS.sm, backgroundColor: '#E6F0FF' },
+    editButtonText: { fontSize: 13, fontWeight: '700', color: COLORS.primary },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    modalContent: { backgroundColor: COLORS.white, borderTopLeftRadius: BORDER_RADIUS.xl, borderTopRightRadius: BORDER_RADIUS.xl, padding: SPACING.xl, gap: SPACING.md },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xs },
+    modalTitle: { fontSize: 20, fontWeight: '800', color: COLORS.text },
+    closeBtn: { padding: SPACING.xs },
+    field: { gap: SPACING.xs },
+    label: { fontSize: 13, fontWeight: '700', color: COLORS.text },
+    input: { backgroundColor: COLORS.gray100, borderRadius: BORDER_RADIUS.sm, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm + 4, fontSize: 15, color: COLORS.text, borderWidth: 1, borderColor: COLORS.border },
+    pickerContainer: { flexDirection: 'row', paddingTop: SPACING.xs },
+    adminChip: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: BORDER_RADIUS.lg, backgroundColor: COLORS.gray100, marginRight: SPACING.sm, borderWidth: 1, borderColor: COLORS.border },
+    adminChipSelected: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+    adminChipText: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '600' },
+    adminChipTextSelected: { color: COLORS.white },
+    saveButton: { backgroundColor: COLORS.primary, paddingVertical: SPACING.md, borderRadius: BORDER_RADIUS.md, alignItems: 'center', marginTop: SPACING.md },
+    saveButtonText: { color: COLORS.white, fontSize: 16, fontWeight: '700' },
 });
