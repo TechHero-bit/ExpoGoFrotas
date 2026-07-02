@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 import { supabase } from '../services/supabase';
 import AdminGuard from '../components/AdminGuard';
+import { fetchAdmins } from '../services/dbService';
 
 function CreateVehicleContent({ navigation }) {
   const [placa, setPlaca] = useState('');
@@ -24,6 +25,23 @@ function CreateVehicleContent({ navigation }) {
   const [kmAtual, setKmAtual] = useState('');
   const [nivelCombustivel, setNivelCombustivel] = useState('');
   const [saving, setSaving] = useState(false);
+  const [admins, setAdmins] = useState([]);
+  const [selectedAdmin, setSelectedAdmin] = useState(null);
+  const [loadingAdmins, setLoadingAdmins] = useState(true);
+
+  React.useEffect(() => {
+    async function loadAdmins() {
+      try {
+        const data = await fetchAdmins();
+        setAdmins(data || []);
+      } catch (err) {
+        console.error('Erro ao carregar administradores:', err);
+      } finally {
+        setLoadingAdmins(false);
+      }
+    }
+    loadAdmins();
+  }, []);
 
   const handleSave = async () => {
     if (!placa.trim() || !modelo.trim() || !localizacao.trim() || !kmAtual.trim() || !nivelCombustivel.trim()) {
@@ -54,6 +72,7 @@ function CreateVehicleContent({ navigation }) {
           localizacao: localizacao.trim(),
           km_atual: km,
           nivel_combustivel: combustivel,
+          ...(selectedAdmin ? { responsavel_id: selectedAdmin } : {})
         },
       ]);
 
@@ -160,6 +179,35 @@ function CreateVehicleContent({ navigation }) {
                   keyboardType="decimal-pad"
                 />
               </View>
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Administrador Responsável</Text>
+              {loadingAdmins ? (
+                <ActivityIndicator size="small" color={COLORS.primary} style={{ alignSelf: 'flex-start' }} />
+              ) : admins.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.sm }}>
+                  {admins.map((adm) => (
+                    <TouchableOpacity
+                      key={adm.id}
+                      style={[
+                        styles.adminChip,
+                        selectedAdmin === adm.id && styles.adminChipSelected
+                      ]}
+                      onPress={() => setSelectedAdmin(adm.id === selectedAdmin ? null : adm.id)}
+                    >
+                      <Text style={[
+                        styles.adminChipText,
+                        selectedAdmin === adm.id && styles.adminChipTextSelected
+                      ]}>
+                        {adm.nome}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              ) : (
+                <Text style={{ color: COLORS.textSecondary, fontSize: 13 }}>Nenhum administrador encontrado.</Text>
+              )}
             </View>
           </View>
 
@@ -270,5 +318,25 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 16,
     fontWeight: '700',
+  },
+  adminChip: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.gray100,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  adminChipSelected: {
+    backgroundColor: COLORS.primary + '15', // light primary
+    borderColor: COLORS.primary,
+  },
+  adminChipText: {
+    fontSize: 14,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  adminChipTextSelected: {
+    color: COLORS.primary,
   },
 });
