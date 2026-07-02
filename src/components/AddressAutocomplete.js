@@ -3,62 +3,91 @@ import { View, TextInput, Text, FlatList, TouchableOpacity, StyleSheet, Activity
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 
+const LOCATIONIQ_TOKEN = 'pk.2bd751445ee7150a339d49346a83657a';
+
+// ── Funções puras movidas para fora do componente (evita recriação a cada render) ──
+
+const formatLocationIQAddress = (address = {}, rawName = '') => {
+  const street = address.road || address.pedestrian || address.footway || address.cycleway || address.highway || address.neighbourhood || address.suburb || address.village || address.city_district || address.town || address.city;
+  const houseNumber = address.house_number;
+  const neighborhood = address.suburb || address.neighbourhood || address.village || address.district || address.city_district || address.county;
+  const city = address.city || address.town || address.village || address.county || address.state;
+
+  if (!street && !city) {
+    return rawName ? rawName.split(',').slice(0, 3).join(', ') : '';
+  }
+
+  const streetPart = street ? street : 'Endereço';
+  const hasNeighborhood = Boolean(neighborhood);
+  const hasCity = Boolean(city);
+  const streetSegment = houseNumber ? `${streetPart}, ${houseNumber}` : streetPart;
+
+  if (hasNeighborhood && hasCity) {
+    return `${streetSegment} - ${neighborhood}, ${city}`;
+  }
+
+  if (hasNeighborhood) {
+    return `${streetSegment} - ${neighborhood}`;
+  }
+
+  if (hasCity) {
+    return `${streetSegment} - ${city}`;
+  }
+
+  return streetSegment;
+};
+
+const sortSuggestions = (items) => {
+  return items.sort((a, b) => {
+    const aHasNumber = a.address?.house_number ? 0 : 1;
+    const bHasNumber = b.address?.house_number ? 0 : 1;
+    if (aHasNumber !== bHasNumber) return aHasNumber - bHasNumber;
+    return a.label.localeCompare(b.label);
+  });
+};
+
+const keyExtractor = (item) => item.place_id?.toString() || `${item.lat}-${item.lon}`;
+
 export default memo(function AddressAutocomplete({ placeholder, onSelect, onChangeText, style }) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showList, setShowList] = useState(false);
   const debounceTimeout = useRef(null);
-  const LOCATIONIQ_TOKEN = 'pk.2bd751445ee7150a339d49346a83657a';
+  const abortControllerRef = useRef(null);
 
-  const formatLocationIQAddress = (address = {}, rawName = '') => {
-    const street = address.road || address.pedestrian || address.footway || address.cycleway || address.highway || address.neighbourhood || address.suburb || address.village || address.city_district || address.town || address.city;
-    const houseNumber = address.house_number;
-    const neighborhood = address.suburb || address.neighbourhood || address.village || address.district || address.city_district || address.county;
-    const city = address.city || address.town || address.village || address.county || address.state;
+  // ── Cleanup: cancelar debounce e fetch pendentes ao desmontar ──
+  useEffect(() => {
+    return () => {
+      if (debounceTimeout.current) {
+        clearTimeout(debounceTimeout.current);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
-    if (!street && !city) {
-      return rawName ? rawName.split(',').slice(0, 3).join(', ') : '';
-    }
-
-    const streetPart = street ? street : 'Endereço';
-    const hasNeighborhood = Boolean(neighborhood);
-    const hasCity = Boolean(city);
-    const streetSegment = houseNumber ? `${streetPart}, ${houseNumber}` : streetPart;
-
-    if (hasNeighborhood && hasCity) {
-      return `${streetSegment} - ${neighborhood}, ${city}`;
-    }
-
-    if (hasNeighborhood) {
-      return `${streetSegment} - ${neighborhood}`;
-    }
-
-    if (hasCity) {
-      return `${streetSegment} - ${city}`;
-    }
-
-    return streetSegment;
-  };
-
-  const sortSuggestions = (items) => {
-    return items.sort((a, b) => {
-      const aHasNumber = a.address?.house_number ? 0 : 1;
-      const bHasNumber = b.address?.house_number ? 0 : 1;
-      if (aHasNumber !== bHasNumber) return aHasNumber - bHasNumber;
-      return a.label.localeCompare(b.label);
-    });
-  };
-
-  const fetchSuggestions = async (text) => {
+  const fetchSuggestions = useCallback(async (text) => {
     if (text.length < 3) {
       setSuggestions([]);
       return;
     }
 
+    // Cancelar request anterior que ainda esteja em andamento
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setLoading(true);
     try {
-      const response = await fetch(`https://api.locationiq.com/v1/autocomplete.php?key=${LOCATIONIQ_TOKEN}&q=${encodeURIComponent(text)}&countrycodes=br&limit=5&addressdetails=1&format=json`);
+      const response = await fetch(
+        `https://api.locationiq.com/v1/autocomplete.php?key=${LOCATIONIQ_TOKEN}&q=${encodeURIComponent(text)}&countrycodes=br&limit=5&addressdetails=1&format=json`,
+        { signal: controller.signal }
+      );
       const data = await response.json();
       const items = Array.isArray(data) ? data : [];
 
@@ -76,12 +105,17 @@ export default memo(function AddressAutocomplete({ placeholder, onSelect, onChan
         }));
       setSuggestions(sortSuggestions(parsed).slice(0, 5));
     } catch (error) {
-      // Ignored error to prevent console logs as requested
-      setSuggestions([]);
+      // Ignorar erros de abort (é esperado ao cancelar)
+      if (error.name !== 'AbortError') {
+        setSuggestions([]);
+      }
     } finally {
-      setLoading(false);
+      // Só atualiza loading se este controller ainda for o ativo
+      if (abortControllerRef.current === controller) {
+        setLoading(false);
+      }
     }
-  };
+  }, []);
 
   const handleTextChange = useCallback((text) => {
     setQuery(text);
@@ -102,7 +136,7 @@ export default memo(function AddressAutocomplete({ placeholder, onSelect, onChan
     debounceTimeout.current = setTimeout(() => {
       fetchSuggestions(text);
     }, 800); // Aumentado para 800ms para reduzir carga enquanto digita
-  }, [onChangeText]);
+  }, [onChangeText, fetchSuggestions]);
 
   const handleSelect = useCallback((item) => {
     const label = item.label || '';
@@ -175,8 +209,6 @@ export default memo(function AddressAutocomplete({ placeholder, onSelect, onChan
     </View>
   );
 });
-
-const keyExtractor = (item) => item.place_id?.toString() || `${item.lat}-${item.lon}`;
 
 const styles = StyleSheet.create({
   container: {

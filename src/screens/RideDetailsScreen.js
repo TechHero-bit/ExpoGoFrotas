@@ -6,11 +6,11 @@ import {
     ScrollView,
     StyleSheet,
     TouchableOpacity,
-    Image,
     Modal,
     InteractionManager,
     ActivityIndicator
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 import AdminGuard from '../components/AdminGuard';
@@ -24,6 +24,14 @@ const VEHICLE_PHOTO_LABELS = ['Frente', 'Lateral Esq.', 'Lateral Dir.', 'Traseir
 export default function RideDetailsScreen({ route, navigation }) {
     const { journey } = route.params || {};
     const [selectedImage, setSelectedImage] = useState(null);
+
+    // ── Callbacks memoizados para evitar re-renders ──
+    const handleImagePress = useCallback((uri) => {
+        setSelectedImage(uri);
+    }, []);
+    const handleCloseModal = useCallback(() => {
+        setSelectedImage(null);
+    }, []);
 
     // ── Estado do Mapa / Rota ──
     const [routeInfo, setRouteInfo] = useState(null);
@@ -147,6 +155,15 @@ export default function RideDetailsScreen({ route, navigation }) {
         };
     }, [journey]);
 
+    // ── Fallback points memoizados para RouteMap (evita quebrar React.memo) ──
+    const memoizedOriginFallback = useMemo(() => {
+        return routeOrigin || getJourneyRoutePoint(journey, 'origin');
+    }, [routeOrigin, journey]);
+
+    const memoizedDestFallback = useMemo(() => {
+        return routeDestination || getJourneyRoutePoint(journey, 'destination');
+    }, [routeDestination, journey]);
+
     if (!journey) {
         return (
             <SafeAreaView style={styles.container}>
@@ -253,8 +270,8 @@ export default function RideDetailsScreen({ route, navigation }) {
                             </View>
                         ) : (
                             <RouteMap
-                                origin={routeOrigin || getJourneyRoutePoint(journey, 'origin')}
-                                destination={routeDestination || getJourneyRoutePoint(journey, 'destination')}
+                                origin={memoizedOriginFallback}
+                                destination={memoizedDestFallback}
                                 routeInfo={routeInfo}
                                 loading={false}
                                 initialMode="minimized"
@@ -294,8 +311,8 @@ export default function RideDetailsScreen({ route, navigation }) {
                                 <Text style={styles.value}>{checkinCombustivel}</Text>
                                 <Text style={styles.label}>Foto do painel</Text>
                                 {checkinPainel ? (
-                                    <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(checkinPainel)}>
-                                        <Image source={{ uri: checkinPainel }} style={styles.panelThumb} resizeMode="cover" />
+                                    <TouchableOpacity activeOpacity={0.8} onPress={() => handleImagePress(checkinPainel)}>
+                                        <Image source={checkinPainel} style={styles.panelThumb} contentFit="cover" cachePolicy="disk" transition={200} />
                                     </TouchableOpacity>
                                 ) : (
                                     <Text style={styles.subtleText}>Foto do painel nao registrada</Text>
@@ -308,8 +325,8 @@ export default function RideDetailsScreen({ route, navigation }) {
                                 <Text style={styles.value}>{checkoutCombustivel}</Text>
                                 <Text style={styles.label}>Foto do painel</Text>
                                 {checkoutPainel ? (
-                                    <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(checkoutPainel)}>
-                                        <Image source={{ uri: checkoutPainel }} style={styles.panelThumb} resizeMode="cover" />
+                                    <TouchableOpacity activeOpacity={0.8} onPress={() => handleImagePress(checkoutPainel)}>
+                                        <Image source={checkoutPainel} style={styles.panelThumb} contentFit="cover" cachePolicy="disk" transition={200} />
                                     </TouchableOpacity>
                                 ) : (
                                     <Text style={styles.subtleText}>Foto do painel nao registrada</Text>
@@ -326,16 +343,16 @@ export default function RideDetailsScreen({ route, navigation }) {
                                 {checkinSelfie && (
                                     <View style={styles.photoContainer}>
                                         <Text style={styles.label}>Selfie</Text>
-                                        <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(checkinSelfie)}>
-                                            <Image source={{ uri: checkinSelfie }} style={styles.photo} resizeMode="cover" />
+                                        <TouchableOpacity activeOpacity={0.8} onPress={() => handleImagePress(checkinSelfie)}>
+                                            <Image source={checkinSelfie} style={styles.photo} contentFit="cover" cachePolicy="disk" transition={200} />
                                         </TouchableOpacity>
                                     </View>
                                 )}
                                 {checkinVeiculos.map((url, index) => (
                                     <View key={index} style={styles.photoContainer}>
                                         <Text style={styles.label}>{VEHICLE_PHOTO_LABELS[index] || `Veículo ${index + 1}`}</Text>
-                                        <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(url)}>
-                                            <Image source={{ uri: url }} style={styles.photo} resizeMode="cover" />
+                                        <TouchableOpacity activeOpacity={0.8} onPress={() => handleImagePress(url)}>
+                                            <Image source={url} style={styles.photo} contentFit="cover" cachePolicy="disk" transition={200} />
                                         </TouchableOpacity>
                                     </View>
                                 ))}
@@ -351,16 +368,16 @@ export default function RideDetailsScreen({ route, navigation }) {
                                 {checkoutSelfie && (
                                     <View style={styles.photoContainer}>
                                         <Text style={styles.label}>Selfie</Text>
-                                        <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(checkoutSelfie)}>
-                                            <Image source={{ uri: checkoutSelfie }} style={styles.photo} resizeMode="cover" />
+                                        <TouchableOpacity activeOpacity={0.8} onPress={() => handleImagePress(checkoutSelfie)}>
+                                            <Image source={checkoutSelfie} style={styles.photo} contentFit="cover" cachePolicy="disk" transition={200} />
                                         </TouchableOpacity>
                                     </View>
                                 )}
                                 {checkoutVeiculos.map((url, index) => (
                                     <View key={index} style={styles.photoContainer}>
                                         <Text style={styles.label}>{VEHICLE_PHOTO_LABELS[index] || `Veículo ${index + 1}`}</Text>
-                                        <TouchableOpacity activeOpacity={0.8} onPress={() => setSelectedImage(url)}>
-                                            <Image source={{ uri: url }} style={styles.photo} resizeMode="cover" />
+                                        <TouchableOpacity activeOpacity={0.8} onPress={() => handleImagePress(url)}>
+                                            <Image source={url} style={styles.photo} contentFit="cover" cachePolicy="disk" transition={200} />
                                         </TouchableOpacity>
                                     </View>
                                 ))}
@@ -381,13 +398,13 @@ export default function RideDetailsScreen({ route, navigation }) {
 
                 </ScrollView>
 
-                <Modal visible={!!selectedImage} transparent={true} animationType="fade" onRequestClose={() => setSelectedImage(null)}>
+                <Modal visible={!!selectedImage} transparent={true} animationType="fade" onRequestClose={handleCloseModal}>
                     <View style={styles.modalContainer}>
-                        <TouchableOpacity style={styles.modalCloseButton} onPress={() => setSelectedImage(null)}>
+                        <TouchableOpacity style={styles.modalCloseButton} onPress={handleCloseModal}>
                             <Ionicons name="close" size={32} color="#FFF" />
                         </TouchableOpacity>
                         {selectedImage && (
-                            <Image source={{ uri: selectedImage }} style={styles.modalImage} resizeMode="contain" />
+                            <Image source={selectedImage} style={styles.modalImage} contentFit="contain" cachePolicy="disk" transition={200} />
                         )}
                     </View>
                 </Modal>

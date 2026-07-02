@@ -1,5 +1,5 @@
 import { SafeAreaView } from 'react-native-safe-area-context';
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
     View,
     Text,
@@ -46,26 +46,18 @@ export default function VehicleCheckinScreen({ navigation }) {
   // ── Estado do Mapa / Rota ──
   const [routeInfo, setRouteInfo] = useState(null);
   const [routeLoading, setRouteLoading] = useState(false);
-  const [isTyping, setIsTyping] = useState(false); // Pausa atualizações pesadas enquanto digita
-  const routeTimeoutRef = useRef(null);
 
   const { refreshJourney } = useJourney();
 
   // ── Callbacks estáveis para AddressAutocomplete (evita re-render) ──
   const handleOriginSelect = useCallback((data) => {
-    setIsTyping(false);
     setResolvedOrigin(data);
     setOrigem(data ? data.label : '');
   }, []);
 
   const handleDestinationSelect = useCallback((data) => {
-    setIsTyping(false);
     setResolvedDestination(data);
     setDestino(data ? data.label : '');
-  }, []);
-
-  const handleTypingStart = useCallback(() => {
-    setIsTyping(true);
   }, []);
 
   /**
@@ -73,27 +65,31 @@ export default function VehicleCheckinScreen({ navigation }) {
    * Disparado automaticamente assim que resolvedOrigin e resolvedDestination forem definidos.
    */
   useEffect(() => {
-    // Se o usuário está digitando ou faltam dados, não calcula rota
-    if (isTyping || !resolvedOrigin || !resolvedDestination) {
+    // Faltam dados — limpa rota sem recalcular
+    if (!resolvedOrigin || !resolvedDestination) {
       setRouteInfo(null);
       return;
     }
+
+    let cancelled = false;
 
     const fetchCurrentRoute = async () => {
       try {
         setRouteLoading(true);
         const route = await fetchRoute(resolvedOrigin, resolvedDestination);
-        setRouteInfo(route);
+        if (!cancelled) setRouteInfo(route);
       } catch (routeError) {
         console.warn('[VehicleCheckin] Erro ao calcular rota:', routeError.message);
-        setRouteInfo(null);
+        if (!cancelled) setRouteInfo(null);
       } finally {
-        setRouteLoading(false);
+        if (!cancelled) setRouteLoading(false);
       }
     };
 
     fetchCurrentRoute();
-  }, [resolvedOrigin, resolvedDestination, isTyping]);
+
+    return () => { cancelled = true; };
+  }, [resolvedOrigin, resolvedDestination]);
 
   useFocusEffect(
     useCallback(() => {
@@ -345,7 +341,6 @@ export default function VehicleCheckinScreen({ navigation }) {
               placeholder="Digite o endereço de origem..."
               style={{ zIndex: 20 }}
               onSelect={handleOriginSelect}
-              onChangeText={handleTypingStart}
             />
 
             <Text style={styles.formLabel}>Destino</Text>
@@ -353,11 +348,11 @@ export default function VehicleCheckinScreen({ navigation }) {
               placeholder="Digite o endereço de destino..."
               style={{ zIndex: 15 }}
               onSelect={handleDestinationSelect}
-              onChangeText={handleTypingStart}
             />
 
-            {/* ── Mapa de Rota (Minimizado) ── */}
-            {(resolvedOrigin || resolvedDestination) && !isTyping && (
+            {/* ── Mapa de Rota (Minimizado) ── 
+                 Sempre montado quando há coordenadas para evitar mount/unmount pesado do mapa nativo */}
+            {(resolvedOrigin || resolvedDestination) && (
               <RouteMap
                 origin={resolvedOrigin}
                 destination={resolvedDestination}
