@@ -150,7 +150,11 @@ export default function DashboardScreen({ navigation }) {
             <View style={styles.header}>
                 <View style={styles.headerLeft}>
                     <View style={styles.avatar}>
-                        <Ionicons name="person" size={20} color={COLORS.white} />
+                        {profile?.foto_perfil_uri ? (
+                            <Image source={{ uri: profile.foto_perfil_uri }} style={styles.avatarImage} />
+                        ) : (
+                            <Ionicons name="person" size={20} color={COLORS.white} />
+                        )}
                     </View>
                     <View>
                         <Text style={styles.appName}>LogiTrack</Text>
@@ -291,6 +295,11 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.primary,
         alignItems: 'center',
         justifyContent: 'center',
+        overflow: 'hidden',
+    },
+    avatarImage: {
+        width: '100%',
+        height: '100%',
     },
     appName: {
         fontSize: 15,

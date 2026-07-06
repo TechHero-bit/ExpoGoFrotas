@@ -9,16 +9,19 @@ import {
     TouchableOpacity,
     Modal,
     TextInput,
-    Alert
+    Alert,
+    Image
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 import { useFocusEffect } from '@react-navigation/native';
-import { fetchVeiculos, fetchAdmins, updateVehicle } from '../services/dbService';
+import { fetchVeiculos, fetchAdmins, updateVehicle, fetchUserProfile } from '../services/dbService';
+import { supabase } from '../services/supabase';
 import { AdminOnly } from '../components/AdminGuard';
 
 export default function FleetScreen({ navigation }) {
     const [veiculos, setVeiculos] = useState([]);
+    const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -38,13 +41,17 @@ export default function FleetScreen({ navigation }) {
             const loadVehicles = async () => {
                 try {
                     setLoading(true);
-                    const [data, adminsData] = await Promise.all([
+                    const userResponse = await supabase.auth.getUser();
+                    const userId = userResponse.data?.user?.id;
+                    const [data, adminsData, userProfile] = await Promise.all([
                         fetchVeiculos(),
-                        fetchAdmins()
+                        fetchAdmins(),
+                        userId ? fetchUserProfile(userId) : Promise.resolve(null)
                     ]);
                     if (isActive) {
                         setVeiculos(data || []);
                         setAdmins(adminsData || []);
+                        setProfile(userProfile);
                     }
                 } catch (loadError) {
                     if (isActive) {
@@ -115,8 +122,17 @@ export default function FleetScreen({ navigation }) {
         <SafeAreaView style={styles.container}>
             <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
                 <View style={styles.header}>
-                    <Text style={styles.title}>Frota</Text>
-                    <Text style={styles.subtitle}>Visao geral dos veiculos da empresa</Text>
+                    <View style={styles.headerTextContainer}>
+                        <Text style={styles.title}>Frota</Text>
+                        <Text style={styles.subtitle}>Visao geral dos veiculos da empresa</Text>
+                    </View>
+                    <View style={styles.profileAvatar}>
+                        {profile?.foto_perfil_uri ? (
+                            <Image source={{ uri: profile.foto_perfil_uri }} style={styles.profileAvatarImage} />
+                        ) : (
+                            <Ionicons name="person" size={18} color={COLORS.white} />
+                        )}
+                    </View>
                 </View>
 
                 <AdminOnly>

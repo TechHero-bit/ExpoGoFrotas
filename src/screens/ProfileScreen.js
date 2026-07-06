@@ -13,12 +13,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
-import { fetchUserProfile } from '../services/dbService';
+import { fetchUserProfile, fetchUserJourneysCount, uploadImageToSupabase, updateUserProfilePhoto } from '../services/dbService';
+import * as ImagePicker from 'expo-image-picker';
 
 export default function ProfileScreen() {
     const [profile, setProfile] = useState(null);
+    const [metrics, setMetrics] = useState({ total: 0, month: 0 });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
     useFocusEffect(
         useCallback(() => {
@@ -35,8 +38,12 @@ export default function ProfileScreen() {
                         return;
                     }
                     const userProfile = await fetchUserProfile(userId);
+                    const userMetrics = await fetchUserJourneysCount(userId);
                     console.log('[DEBUG LOGITRACK] ProfileScreen fetchUserProfile result:', userProfile);
-                    if (isActive) setProfile(userProfile);
+                    if (isActive) {
+                        setProfile(userProfile);
+                        setMetrics(userMetrics);
+                    }
                 } catch (loadError) {
                     if (isActive) setError('Falha ao carregar perfil.');
                     console.warn(loadError);
@@ -52,6 +59,71 @@ export default function ProfileScreen() {
             };
         }, [])
     );
+
+    const handleChangeAvatar = async () => {
+        if (!profile?.id) {
+            Alert.alert('Erro', 'Não foi possível identificar o usuário para atualizar a foto.');
+            return;
+        }
+
+        try {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert('Permissão Negada', 'Precisamos de acesso à câmera para alterar a foto.');
+                return;
+            }
+
+            const result = await ImagePicker.launchCameraAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.7,
+            });
+
+            if (result.canceled) {
+                return;
+            }
+
+            setUploadingPhoto(true);
+            const imageAsset = result.assets[0];
+            const avatarPath = `avatars/${profile.id}.png`;
+            const uploadResult = await uploadImageToSupabase(imageAsset, `avatar_${profile.id}`, 'FotoDePerfil', avatarPath);
+
+            if (uploadResult && uploadResult.publicUrl) {
+                const updatedProfile = await updateUserProfilePhoto(profile.id, uploadResult.publicUrl);
+                const nextPhotoUrl = updatedProfile?.[0]?.foto_perfil_uri || uploadResult.publicUrl;
+                setProfile(prev => ({ ...prev, foto_perfil_uri: nextPhotoUrl }));
+                Alert.alert('Sucesso', 'Foto de perfil atualizada!');
+            }
+        } catch (err) {
+            console.error('[PROFILE] Falha ao atualizar a foto de perfil:', err);
+            Alert.alert('Erro', 'Falha ao atualizar a foto de perfil.');
+        } finally {
+            setUploadingPhoto(false);
+        }
+    };
+
+    const getRoleDetails = () => {
+        const r = (profile?.role || '').toLowerCase();
+        if (r.includes('adm') || r.includes('gestor') || r.includes('gerente')) {
+            return {
+                icon: 'shield-checkmark-outline',
+                subtitle: 'Administração e gestão da frota.'
+            };
+        }
+        if (r.includes('motorista') || r.includes('driver')) {
+            return {
+                icon: 'car-outline',
+                subtitle: 'Informações do seu perfil de motorista.'
+            };
+        }
+        return {
+            icon: 'person-outline',
+            subtitle: 'Dados do seu perfil no sistema.'
+        };
+    };
+
+    const roleDetails = getRoleDetails();
 
     const handleSignOut = async () => {
         try {
@@ -83,16 +155,26 @@ export default function ProfileScreen() {
             <View style={styles.header}>
                 <View>
                     <Text style={styles.title}>Meu Perfil</Text>
-                    <Text style={styles.subtitle}>Dados do gestor e do motorista</Text>
+                    <Text style={styles.subtitle}>{roleDetails.subtitle}</Text>
                 </View>
-                <View style={styles.avatarContainer}>
-                    <Image source={{ uri: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80' }} style={styles.avatar} />
-                </View>
+                <TouchableOpacity style={styles.avatarContainer} onPress={handleChangeAvatar} disabled={uploadingPhoto}>
+                    {uploadingPhoto ? (
+                        <ActivityIndicator size="small" color={COLORS.primary} style={styles.avatarLoading} />
+                    ) : (
+                        <Image
+                            source={{ uri: profile?.foto_perfil_uri || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80' }}
+                            style={styles.avatar}
+                        />
+                    )}
+                </TouchableOpacity>
             </View>
 
             <View style={styles.card}>
                 <Text style={styles.cardTitle}>{profile?.nome || 'Usuário'}</Text>
-                <Text style={styles.cardSubtitle}>{profile?.role || 'Perfil'}</Text>
+                <View style={styles.roleRow}>
+                    <Ionicons name={roleDetails.icon} size={14} color={COLORS.textSecondary} />
+                    <Text style={styles.cardSubtitle}>{profile?.role || 'Perfil'}</Text>
+                </View>
                 <View style={styles.infoRow}>
                     <Ionicons name="mail-outline" size={18} color={COLORS.primary} />
                     <Text style={styles.infoText}>{profile?.email || 'Sem e-mail'}</Text>
@@ -107,11 +189,11 @@ export default function ProfileScreen() {
                 <Text style={styles.cardTitle}>Performance da Frota</Text>
                 <View style={styles.metricRow}>
                     <View style={styles.metricBlock}>
-                        <Text style={styles.metricValue}>96%</Text>
-                        <Text style={styles.metricLabel}>Disponibilidade</Text>
+                        <Text style={styles.metricValue}>{metrics.total}</Text>
+                        <Text style={styles.metricLabel}>Viagens Totais</Text>
                     </View>
                     <View style={styles.metricBlock}>
-                        <Text style={styles.metricValue}>18</Text>
+                        <Text style={styles.metricValue}>{metrics.month}</Text>
                         <Text style={styles.metricLabel}>Viagens/Mês</Text>
                     </View>
                 </View>
@@ -145,6 +227,7 @@ const styles = StyleSheet.create({
         borderColor: COLORS.primary,
     },
     avatar: { width: '100%', height: '100%' },
+    avatarLoading: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.gray100 },
     card: {
         backgroundColor: COLORS.white,
         padding: SPACING.md,
@@ -154,7 +237,8 @@ const styles = StyleSheet.create({
         marginBottom: SPACING.md,
     },
     cardTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text, marginBottom: SPACING.sm },
-    cardSubtitle: { fontSize: 13, color: COLORS.textSecondary, marginBottom: SPACING.md },
+    cardSubtitle: { fontSize: 13, color: COLORS.textSecondary },
+    roleRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, marginBottom: SPACING.md },
     infoRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },
     infoText: { fontSize: 13, color: COLORS.textSecondary },
     metricRow: { flexDirection: 'row', justifyContent: 'space-between', gap: SPACING.md },

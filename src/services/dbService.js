@@ -1,40 +1,31 @@
 import { Alert } from 'react-native';
-import { decode } from 'base64-arraybuffer';
 import { supabase } from './supabase';
 
 /**
  * Função utilitária para fazer upload de imagens para o Supabase Storage
- * usando ArrayBuffer (mais estável no React Native que FormData).
+ * usando Blob via fetch (mais confiável no React Native que FormData).
  */
-async function uploadImageToSupabase(imageAsset, prefix) {
+export async function uploadImageToSupabase(imageAsset, prefix, bucketName = 'evidencias', filePathOverride = null) {
   if (!imageAsset || !imageAsset.uri || imageAsset.uri === 'sem-imagem') {
     return null;
   }
 
   try {
-    const { uri, base64 } = imageAsset;
-    const ext = uri.split('.').pop() || 'jpg';
+    const { uri } = imageAsset;
+    const ext = (filePathOverride?.split('.').pop() || uri.split('.').pop() || 'jpg').toLowerCase();
     const fileName = `${prefix}_${Date.now()}.${ext}`;
-    const filePath = `Imagens de check-in e check-out/${fileName}`;
-    const contentType = `image/${ext === 'png' ? 'png' : 'jpeg'}`;
+    const filePath = filePathOverride || `Imagens de check-in e check-out/${fileName}`;
+    const contentType = ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'application/octet-stream';
 
-    console.log(`[LOGITRACK] Iniciando upload: ${fileName} (${contentType})`);
+    console.log(`[LOGITRACK] Iniciando upload: ${filePath} (${contentType})`);
 
-    let uploadData;
-
-    if (base64) {
-      // Método robusto: ArrayBuffer via base64
-      uploadData = decode(base64);
-    } else {
-      // Fallback: Blob via fetch (se base64 não estiver disponível)
-      const response = await fetch(uri);
-      uploadData = await response.blob();
-    }
+    const response = await fetch(uri);
+    const uploadData = await response.blob();
 
     const { error: uploadError } = await supabase.storage
-      .from('evidencias')
+      .from(bucketName)
       .upload(filePath, uploadData, {
-        contentType: contentType,
+        contentType,
         upsert: true
       });
 
@@ -43,7 +34,7 @@ async function uploadImageToSupabase(imageAsset, prefix) {
     }
 
     const { data: publicData, error: publicUrlError } = await supabase.storage
-      .from('evidencias')
+      .from(bucketName)
       .getPublicUrl(filePath);
 
     if (publicUrlError || !publicData?.publicUrl) {
@@ -62,7 +53,7 @@ async function uploadImageToSupabase(imageAsset, prefix) {
 export async function fetchUserProfile(userId) {
   const { data, error, status } = await supabase
     .from('usuarios')
-    .select('id, nome, email, telefone, role')
+    .select('id, nome, email, telefone, role, foto_perfil_uri')
     .eq('id', userId);
 
   console.log('[DEBUG LOGITRACK] Query fetchUserProfile retornou:', { data, error, status, totalRows: data?.length });
@@ -105,13 +96,20 @@ export async function fetchAvailableVeiculos() {
 }
 
 export async function fetchTarefas(usuarioId) {
+  if (!usuarioId) {
+    const error = new Error('fetchTarefas chamado sem usuarioId válido');
+    console.error('[DB SERVICE] usuarioId inválido:', usuarioId);
+    throw error;
+  }
+
   const { data, error } = await supabase
     .from('tarefas')
-    .select('id, titulo, descricao, status, localizacao, prazo')
+    .select('id, titulo, descricao, status, localizacao, data_limite')
     .eq('atribuido_a', usuarioId)
     .order('data_limite', { ascending: true });
 
   if (error) {
+    console.error('[DB SERVICE] Erro Supabase fetchTarefas:', error);
     throw error;
   }
   return data;
@@ -717,6 +715,47 @@ export async function markNotificationsAsRead(userId) {
     .update({ lida: true })
     .eq('user_id', userId)
     .eq('lida', false);
+
+  if (error) {
+    throw error;
+  }
+  return data;
+}
+
+export async function fetchUserJourneysCount(userId) {
+  // Total de viagens
+  const { count: totalCount, error: totalError } = await supabase
+    .from('jornadas')
+    .select('*', { count: 'exact', head: true })
+    .eq('motorista_id', userId);
+
+  if (totalError) throw totalError;
+
+  // Viagens do mês corrente
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const { count: monthCount, error: monthError } = await supabase
+    .from('jornadas')
+    .select('*', { count: 'exact', head: true })
+    .eq('motorista_id', userId)
+    .gte('iniciado_em', startOfMonth.toISOString());
+
+  if (monthError) throw monthError;
+
+  return {
+    total: totalCount || 0,
+    month: monthCount || 0
+  };
+}
+
+export async function updateUserProfilePhoto(userId, photoUrl) {
+  const { data, error } = await supabase
+    .from('usuarios')
+    .update({ foto_perfil_uri: photoUrl })
+    .eq('id', userId)
+    .select('id, foto_perfil_uri');
 
   if (error) {
     throw error;

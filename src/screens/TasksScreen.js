@@ -1,5 +1,5 @@
 import { SafeAreaView } from 'react-native-safe-area-context';
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
     View,
     Text,
@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
-import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 import { fetchTarefas } from '../services/dbService';
 
@@ -18,38 +17,51 @@ export default function TasksScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useFocusEffect(
-    useCallback(() => {
-      let isActive = true;
+  useEffect(() => {
+    let isActive = true;
 
-      const loadTasks = async () => {
-        try {
-          setLoading(true);
-          const userResponse = await supabase.auth.getUser();
-          const userId = userResponse.data?.user?.id;
+    const loadTasks = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        setTasks([]);
 
-          if (!userId) {
-            if (isActive) setError('Não foi possível identificar o usuário.');
-            return;
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user?.id) {
+          if (isActive) {
+            setTasks([]);
+            setError(null);
           }
-
-          const lista = await fetchTarefas(userId);
-          if (isActive) setTasks(lista || []);
-        } catch (loadError) {
-          if (isActive) setError('Erro ao buscar tarefas.');
-          console.warn(loadError);
-        } finally {
-          if (isActive) setLoading(false);
+          return;
         }
-      };
 
-      loadTasks();
+        console.log('[TASKS] user.id:', user.id);
 
-      return () => {
-        isActive = false;
-      };
-    }, [])
-  );
+        const lista = await fetchTarefas(user.id);
+        if (isActive) {
+          setError(null);
+          setTasks(lista || []);
+        }
+      } catch (loadError) {
+        console.error('[TASKS] Falha ao buscar tarefas:', loadError);
+        console.error('Erro detalhado do Supabase:', loadError);
+        if (isActive) {
+          setError('Erro ao buscar tarefas. Tente novamente mais tarde.');
+          setTasks([]);
+        }
+      } finally {
+        if (isActive) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadTasks();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   if (loading) {
     return (
@@ -69,8 +81,11 @@ export default function TasksScreen() {
 
         {error ? (
           <Text style={styles.errorText}>{error}</Text>
-        ) : !tasks.length ? (
-          <Text style={styles.emptyText}>Nenhuma tarefa encontrada para o seu perfil.</Text>
+        ) : !tasks || tasks.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="clipboard-outline" size={48} color={COLORS.textSecondary} />
+            <Text style={styles.emptyText}>Você não possui tarefas atribuídas no momento.</Text>
+          </View>
         ) : (
           tasks.map((task) => (
             <View key={task.id} style={styles.taskCard}>
@@ -91,7 +106,7 @@ export default function TasksScreen() {
               </View>
               <View style={styles.taskDetailRow}>
                 <Ionicons name="location-outline" size={16} color={COLORS.primary} />
-                <Text style={styles.taskSubtitle}>{task.local || task.descricao || 'Sem local definido'}</Text>
+                <Text style={styles.taskSubtitle}>{task.localizacao || task.descricao || 'Sem local definido'}</Text>
               </View>
             </View>
           ))
@@ -125,5 +140,6 @@ const styles = StyleSheet.create({
   taskDetailRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
   taskSubtitle: { fontSize: 13, color: COLORS.textSecondary },
   errorText: { color: COLORS.danger, textAlign: 'center' },
-  emptyText: { color: COLORS.textSecondary, textAlign: 'center' },
+  emptyContainer: { alignItems: 'center', justifyContent: 'center', padding: SPACING.xl, marginTop: SPACING.xl },
+  emptyText: { color: COLORS.textSecondary, textAlign: 'center', marginTop: SPACING.md },
 });
