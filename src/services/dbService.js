@@ -4,6 +4,7 @@ import { supabase } from './supabase';
 /**
  * Função utilitária para fazer upload de imagens para o Supabase Storage
  * usando Blob via fetch (mais confiável no React Native que FormData).
+ * Inclui refresh de token para garantir que a autenticação está válida.
  */
 export async function uploadImageToSupabase(imageAsset, prefix, bucketName = 'evidencias', filePathOverride = null) {
   if (!imageAsset || !imageAsset.uri || imageAsset.uri === 'sem-imagem') {
@@ -11,6 +12,12 @@ export async function uploadImageToSupabase(imageAsset, prefix, bucketName = 'ev
   }
 
   try {
+    // Refresh the session to ensure the token is fresh before uploading
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError) {
+      console.warn('[UPLOAD SUPABASE] Aviso ao refresh da sessão:', refreshError.message);
+    }
+
     const { uri } = imageAsset;
     const ext = (filePathOverride?.split('.').pop() || uri.split('.').pop() || 'jpg').toLowerCase();
     const fileName = `${prefix}_${Date.now()}.${ext}`;
@@ -30,6 +37,12 @@ export async function uploadImageToSupabase(imageAsset, prefix, bucketName = 'ev
       });
 
     if (uploadError) {
+      console.error('[UPLOAD SUPABASE] Erro de upload:', {
+        code: uploadError.code,
+        message: uploadError.message,
+        bucket: bucketName,
+        path: filePath
+      });
       throw uploadError;
     }
 

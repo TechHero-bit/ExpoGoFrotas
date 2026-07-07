@@ -86,18 +86,40 @@ export default function ProfileScreen() {
 
             setUploadingPhoto(true);
             const imageAsset = result.assets[0];
-            const avatarPath = `avatars/${profile.id}.png`;
-            const uploadResult = await uploadImageToSupabase(imageAsset, `avatar_${profile.id}`, 'FotoDePerfil', avatarPath);
+            
+            try {
+                const avatarPath = `avatars/${profile.id}.png`;
+                const uploadResult = await uploadImageToSupabase(imageAsset, `avatar_${profile.id}`, 'FotoDePerfil', avatarPath);
 
-            if (uploadResult && uploadResult.publicUrl) {
-                const updatedProfile = await updateUserProfilePhoto(profile.id, uploadResult.publicUrl);
-                const nextPhotoUrl = updatedProfile?.[0]?.foto_perfil_uri || uploadResult.publicUrl;
-                setProfile(prev => ({ ...prev, foto_perfil_uri: nextPhotoUrl }));
-                Alert.alert('Sucesso', 'Foto de perfil atualizada!');
+                if (uploadResult && uploadResult.publicUrl) {
+                    try {
+                        const updatedProfile = await updateUserProfilePhoto(profile.id, uploadResult.publicUrl);
+                        const nextPhotoUrl = updatedProfile?.[0]?.foto_perfil_uri || uploadResult.publicUrl;
+                        setProfile(prev => ({ ...prev, foto_perfil_uri: nextPhotoUrl }));
+                        Alert.alert('Sucesso', 'Foto de perfil atualizada!');
+                    } catch (updateError) {
+                        console.error('[PROFILE] Falha ao atualizar perfil no banco:', updateError);
+                        Alert.alert('Aviso', 'Foto enviada, mas falha ao atualizar o perfil. Tente recarregar o app.');
+                    }
+                }
+            } catch (uploadErr) {
+                console.error('[PROFILE] Erro ao fazer upload:', uploadErr);
+                const errorMessage = uploadErr?.message || uploadErr?.toString() || 'Falha desconhecida';
+                
+                // Mensagens de erro mais específicas
+                if (errorMessage.includes('permission') || errorMessage.includes('policy') || errorMessage.includes('403')) {
+                    Alert.alert('Erro de Permissão', 'Você não tem permissão para fazer upload de fotos. Verifique sua autenticação.');
+                } else if (errorMessage.includes('network') || errorMessage.includes('timeout') || errorMessage.includes('401')) {
+                    Alert.alert('Erro de Conexão', 'Problema de conexão. Verifique sua internet e tente novamente.');
+                } else if (errorMessage.includes('Nenhuma tarefa')) {
+                    Alert.alert('Erro', 'Falha ao fazer upload da foto. Tente novamente.');
+                } else {
+                    Alert.alert('Erro', `Falha ao atualizar a foto de perfil: ${errorMessage}`);
+                }
             }
         } catch (err) {
-            console.error('[PROFILE] Falha ao atualizar a foto de perfil:', err);
-            Alert.alert('Erro', 'Falha ao atualizar a foto de perfil.');
+            console.error('[PROFILE] Erro geral ao atualizar foto:', err);
+            Alert.alert('Erro', 'Ocorreu um erro inesperado. Tente novamente.');
         } finally {
             setUploadingPhoto(false);
         }

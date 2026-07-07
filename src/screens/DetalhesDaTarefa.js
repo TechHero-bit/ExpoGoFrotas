@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
+import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 import { useRole } from '../contexts/RoleContext';
 
@@ -93,13 +94,14 @@ function formatDate(value) {
   });
 }
 
-async function updateTaskStatusWithFallback({ supabaseClient, taskId, novoStatus, assignedUserId }) {
+async function updateTaskStatusWithFallback({ supabaseClient, taskId, novoStatus, assignedUserId, isAdmin = false }) {
   let updateQuery = supabaseClient
     .from('tarefas')
     .update({ status: novoStatus })
     .eq('id', taskId);
 
-  if (assignedUserId) {
+  // Somente adiciona filtro de atribuido_a para usuários normais (não-admins)
+  if (assignedUserId && !isAdmin) {
     updateQuery = updateQuery.eq('atribuido_a', assignedUserId);
   }
 
@@ -144,85 +146,87 @@ export default function DetalhesDaTarefa({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const { isAdmin } = useRole();
 
-  useEffect(() => {
-    if (!taskId) {
-      setError('Nenhuma tarefa foi informada para exibição.');
-      setLoading(false);
-      return;
-    }
-
-    let isActive = true;
-
-    const loadTask = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const { data, error: fetchError } = await supabase
-          .from('tarefas')
-          .select('id, titulo, descricao, status, localizacao, veiculo_id, atribuido_a, agendado_em, data_limite')
-          .eq('id', taskId)
-          .maybeSingle();
-
-        if (fetchError) throw fetchError;
-
-        if (!isActive) return;
-
-        if (!data) {
-          setTask(null);
-          setError('Tarefa não encontrada.');
-          return;
-        }
-
-        setTask(data);
-
-        if (data.veiculo_id) {
-          const { data: vehicleData, error: vehicleError } = await supabase
-            .from('veiculos')
-            .select('id, placa, modelo')
-            .eq('id', data.veiculo_id)
-            .maybeSingle();
-
-          if (!isActive) return;
-          if (!vehicleError) {
-            setVehicle(vehicleData);
-          }
-        } else {
-          setVehicle(null);
-        }
-
-        if (data.atribuido_a) {
-          const { data: userData, error: userError } = await supabase
-            .from('usuarios')
-            .select('id, nome')
-            .eq('id', data.atribuido_a)
-            .maybeSingle();
-
-          if (!isActive) return;
-          if (!userError) {
-            setAssignedUser(userData);
-          }
-        } else {
-          setAssignedUser(null);
-        }
-      } catch (err) {
-        console.error('[TASK DETAILS] Erro ao carregar tarefa:', err);
-        if (isActive) {
-          setError('Não foi possível carregar os detalhes desta tarefa.');
-        }
-      } finally {
-        if (isActive) {
-          setLoading(false);
-        }
+  useFocusEffect(
+    useCallback(() => {
+      if (!taskId) {
+        setError('Nenhuma tarefa foi informada para exibição.');
+        setLoading(false);
+        return;
       }
-    };
 
-    loadTask();
+      let isActive = true;
 
-    return () => {
-      isActive = false;
-    };
-  }, [taskId]);
+      const loadTask = async () => {
+        try {
+          setLoading(true);
+          setError(null);
+
+          const { data, error: fetchError } = await supabase
+            .from('tarefas')
+            .select('id, titulo, descricao, status, localizacao, veiculo_id, atribuido_a, agendado_em, data_limite')
+            .eq('id', taskId)
+            .maybeSingle();
+
+          if (fetchError) throw fetchError;
+
+          if (!isActive) return;
+
+          if (!data) {
+            setTask(null);
+            setError('Tarefa não encontrada.');
+            return;
+          }
+
+          setTask(data);
+
+          if (data.veiculo_id) {
+            const { data: vehicleData, error: vehicleError } = await supabase
+              .from('veiculos')
+              .select('id, placa, modelo')
+              .eq('id', data.veiculo_id)
+              .maybeSingle();
+
+            if (!isActive) return;
+            if (!vehicleError) {
+              setVehicle(vehicleData);
+            }
+          } else {
+            setVehicle(null);
+          }
+
+          if (data.atribuido_a) {
+            const { data: userData, error: userError } = await supabase
+              .from('usuarios')
+              .select('id, nome')
+              .eq('id', data.atribuido_a)
+              .maybeSingle();
+
+            if (!isActive) return;
+            if (!userError) {
+              setAssignedUser(userData);
+            }
+          } else {
+            setAssignedUser(null);
+          }
+        } catch (err) {
+          console.error('[TASK DETAILS] Erro ao carregar tarefa:', err);
+          if (isActive) {
+            setError('Não foi possível carregar os detalhes desta tarefa.');
+          }
+        } finally {
+          if (isActive) {
+            setLoading(false);
+          }
+        }
+      };
+
+      loadTask();
+
+      return () => {
+        isActive = false;
+      };
+    }, [taskId])
+  );
 
   const statusMeta = useMemo(() => getStatusMeta(task?.status), [task?.status]);
   const isDeadlineOverdue = Boolean(
@@ -250,6 +254,7 @@ export default function DetalhesDaTarefa({ route, navigation }) {
         taskId: task.id,
         novoStatus,
         assignedUserId: currentUserId,
+        isAdmin,
       });
 
       if (updateError) throw updateError;

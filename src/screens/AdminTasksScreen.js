@@ -1,5 +1,5 @@
 import { SafeAreaView } from 'react-native-safe-area-context';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
     View,
     Text,
@@ -20,6 +20,7 @@ import { supabase } from '../services/supabase';
 import { createTaskAssignmentNotification } from '../services/dbService';
 import AdminGuard from '../components/AdminGuard';
 import { normalizeStatus } from '../utils/taskStatus';
+import { useFocusEffect } from '@react-navigation/native';
 
 function formatDateInput(value) {
   if (!value) return '';
@@ -113,9 +114,11 @@ function AdminTasksContent({ navigation }) {
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [])
+  );
 
   const handleCreateTask = async () => {
     if (!titulo.trim() || !descricao.trim() || !localizacao.trim() || !veiculoId || !atribuidoA || !dataLimite || !horaLimiteDisplay) {

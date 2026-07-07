@@ -1,5 +1,5 @@
 import { SafeAreaView } from 'react-native-safe-area-context';
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
     View,
     Text,
@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
+import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 import { fetchTarefas } from '../services/dbService';
 import { formatStatusLabel, normalizeStatus } from '../utils/taskStatus';
@@ -19,51 +20,52 @@ export default function TasksScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    let isActive = true;
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
 
-    const loadTasks = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        setTasks([]);
-
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user?.id) {
-          if (isActive) {
-            setTasks([]);
-            setError(null);
-          }
-          return;
-        }
-
-        console.log('[TASKS] user.id:', user.id);
-
-        const lista = await fetchTarefas(user.id);
-        if (isActive) {
+      const loadTasks = async () => {
+        try {
+          setLoading(true);
           setError(null);
-          setTasks(lista || []);
-        }
-      } catch (loadError) {
-        console.error('[TASKS] Falha ao buscar tarefas:', loadError);
-        console.error('Erro detalhado do Supabase:', loadError);
-        if (isActive) {
-          setError('Erro ao buscar tarefas. Tente novamente mais tarde.');
-          setTasks([]);
-        }
-      } finally {
-        if (isActive) {
-          setLoading(false);
-        }
-      }
-    };
 
-    loadTasks();
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user?.id) {
+            if (isActive) {
+              setTasks([]);
+              setError(null);
+            }
+            return;
+          }
 
-    return () => {
-      isActive = false;
-    };
-  }, []);
+          console.log('[TASKS] user.id:', user.id);
+
+          const lista = await fetchTarefas(user.id);
+          if (isActive) {
+            setError(null);
+            setTasks(lista || []);
+          }
+        } catch (loadError) {
+          console.error('[TASKS] Falha ao buscar tarefas:', loadError);
+          console.error('Erro detalhado do Supabase:', loadError);
+          if (isActive) {
+            setError('Erro ao buscar tarefas. Tente novamente mais tarde.');
+            setTasks([]);
+          }
+        } finally {
+          if (isActive) {
+            setLoading(false);
+          }
+        }
+      };
+
+      loadTasks();
+
+      return () => {
+        isActive = false;
+      };
+    }, [])
+  );
 
   if (loading) {
     return (
