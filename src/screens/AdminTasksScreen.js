@@ -9,41 +9,102 @@ import {
     TouchableOpacity,
     Alert,
     TextInput,
-    Modal
+    Modal,
+    KeyboardAvoidingView,
+    Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 import { supabase } from '../services/supabase';
+import { createTaskAssignmentNotification } from '../services/dbService';
 import AdminGuard from '../components/AdminGuard';
+import { normalizeStatus } from '../utils/taskStatus';
+
+function formatDateInput(value) {
+  if (!value) return '';
+  let digits = value.replace(/\D/g, '');
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return digits.slice(0, 2) + '/' + digits.slice(2);
+  return digits.slice(0, 2) + '/' + digits.slice(2, 4) + '/' + digits.slice(4, 8);
+}
+
+function parseFormattedDate(formatted) {
+  if (!formatted || typeof formatted !== 'string') return null;
+  const parts = formatted.split('/');
+  if (parts.length !== 3 || parts[0].length !== 2 || parts[1].length !== 2 || parts[2].length !== 4) {
+    return null;
+  }
+  const [day, month, year] = parts.map(Number);
+  if (isNaN(day) || isNaN(month) || isNaN(year) || day < 1 || day > 31 || month < 1 || month > 12 || year < 2024) {
+    return null;
+  }
+  return new Date(year, month - 1, day).toISOString();
+}
+
+function combineDateAndTime(dateISO, timeDate) {
+  if (!dateISO || !timeDate) return null;
+  
+  // Parse a data ISO para extrair ano/mês/dia
+  const dateObj = new Date(dateISO);
+  const year = dateObj.getUTCFullYear();
+  const month = dateObj.getUTCMonth();
+  const day = dateObj.getUTCDate();
+  
+  // Extrair hora e minutos do objeto time
+  const hours = timeDate.getHours();
+  const minutes = timeDate.getMinutes();
+  
+  // Criar novo Date combinando data + hora
+  const combined = new Date(year, month, day, hours, minutes, 0, 0);
+  
+  return combined.toISOString();
+}
+
+function formatTimeDisplay(timeDate) {
+  if (!timeDate) return '';
+  const hours = String(timeDate.getHours()).padStart(2, '0');
+  const minutes = String(timeDate.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
 
 function AdminTasksContent({ navigation }) {
   const [tarefas, setTarefas] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
+  const [veiculos, setVeiculos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
 
   // Form state
   const [titulo, setTitulo] = useState('');
   const [descricao, setDescricao] = useState('');
   const [localizacao, setLocalizacao] = useState('');
+  const [veiculoId, setVeiculoId] = useState('');
   const [atribuidoA, setAtribuidoA] = useState('');
   const [dataLimite, setDataLimite] = useState('');
+  const [horaLimite, setHoraLimite] = useState(new Date());
+  const [horaLimiteDisplay, setHoraLimiteDisplay] = useState('');
+
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [tarefasRes, usuariosRes] = await Promise.all([
+      const [tarefasRes, usuariosRes, veiculosRes] = await Promise.all([
         supabase.from('tarefas').select('*').order('agendado_em', { ascending: false }),
         supabase.from('usuarios').select('id, nome, email, role'),
+        supabase.from('veiculos').select('id, placa, modelo').order('modelo', { ascending: true }),
       ]);
 
       if (tarefasRes.error) throw tarefasRes.error;
       if (usuariosRes.error) throw usuariosRes.error;
+      if (veiculosRes.error) throw veiculosRes.error;
 
       setTarefas(tarefasRes.data || []);
       setUsuarios(usuariosRes.data || []);
+      setVeiculos(veiculosRes.data || []);
     } catch (err) {
       setError('Erro ao carregar tarefas.');
       console.error(err);
@@ -57,8 +118,21 @@ function AdminTasksContent({ navigation }) {
   }, []);
 
   const handleCreateTask = async () => {
-    if (!titulo.trim() || !descricao.trim() || !atribuidoA) {
-      Alert.alert('Campos obrigatórios', 'Preencha título, descrição e selecione um usuário.');
+    if (!titulo.trim() || !descricao.trim() || !localizacao.trim() || !veiculoId || !atribuidoA || !dataLimite || !horaLimiteDisplay) {
+      Alert.alert('Campos obrigatórios', 'Preencha título, descrição, localização, veículo, responsável, data e hora limite.');
+      return;
+    }
+
+    const dataLimiteISO = parseFormattedDate(dataLimite);
+    if (!dataLimiteISO) {
+      Alert.alert('Data inválida', 'Use o formato DD/MM/AAAA para a data limite.');
+      return;
+    }
+
+    // Combinar data e hora em um único timestamp ISO 8601
+    const dataHoraLimite = combineDateAndTime(dataLimiteISO, horaLimite);
+    if (!dataHoraLimite) {
+      Alert.alert('Erro', 'Falha ao processar a data e hora limite.');
       return;
     }
 
@@ -68,11 +142,12 @@ function AdminTasksContent({ navigation }) {
         {
           titulo: titulo.trim(),
           descricao: descricao.trim(),
-          status: 'Pendente',
-          localizacao: localizacao.trim() || null,
+          status: 'pendente',
+          localizacao: localizacao.trim(),
+          veiculo_id: veiculoId,
           atribuido_a: atribuidoA,
           agendado_em: new Date().toISOString(),
-          data_limite: dataLimite ? new Date(dataLimite).toISOString() : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          data_limite: dataHoraLimite,
         },
       ]);
 
@@ -85,7 +160,21 @@ function AdminTasksContent({ navigation }) {
         return;
       }
 
-      Alert.alert('Sucesso! ✅', 'Tarefa criada com sucesso.');
+      try {
+        await createTaskAssignmentNotification({
+          userId: atribuidoA,
+          taskTitle: titulo.trim(),
+        });
+      } catch (notifError) {
+        console.error('Erro ao criar notificação de tarefa atribuída:', notifError);
+        Alert.alert('Tarefa criada', 'A tarefa foi criada, mas não foi possível enviar a notificação ao usuário.');
+        setModalVisible(false);
+        resetForm();
+        loadData();
+        return;
+      }
+
+      Alert.alert('Sucesso! ✅', `Tarefa criada com prazo em ${dataLimite} às ${horaLimiteDisplay}.`);
       setModalVisible(false);
       resetForm();
       loadData();
@@ -121,12 +210,25 @@ function AdminTasksContent({ navigation }) {
     );
   };
 
+  const handleTimePickerChange = (event, selectedTime) => {
+    if (Platform.OS === 'android') {
+      setShowTimePicker(false);
+    }
+    if (selectedTime) {
+      setHoraLimite(selectedTime);
+      setHoraLimiteDisplay(formatTimeDisplay(selectedTime));
+    }
+  };
+
   const resetForm = () => {
     setTitulo('');
     setDescricao('');
     setLocalizacao('');
+    setVeiculoId('');
     setAtribuidoA('');
     setDataLimite('');
+    setHoraLimite(new Date());
+    setHoraLimiteDisplay('');
   };
 
   const getUserName = (userId) => {
@@ -135,9 +237,9 @@ function AdminTasksContent({ navigation }) {
   };
 
   const getStatusStyle = (status) => {
-    if (status === 'Em andamento') return styles.statusActive;
-    if (status === 'Pendente') return styles.statusPending;
-    if (status === 'Concluída') return styles.statusDone;
+    if (normalizeStatus(status) === 'em_andamento') return styles.statusActive;
+    if (normalizeStatus(status) === 'pendente') return styles.statusPending;
+    if (normalizeStatus(status) === 'finalizado') return styles.statusDone;
     return styles.statusDefault;
   };
 
@@ -181,7 +283,12 @@ function AdminTasksContent({ navigation }) {
           </View>
         ) : (
           tarefas.map((task) => (
-            <View key={task.id} style={styles.taskCard}>
+            <TouchableOpacity
+              key={task.id}
+              style={styles.taskCard}
+              onPress={() => navigation.navigate('DetalhesDaTarefa', { taskId: task.id })}
+              activeOpacity={0.9}
+            >
               <View style={styles.taskHeader}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.taskTitle}>{task.titulo}</Text>
@@ -190,7 +297,10 @@ function AdminTasksContent({ navigation }) {
                   </Text>
                 </View>
                 <TouchableOpacity
-                  onPress={() => handleDeleteTask(task.id, task.titulo)}
+                  onPress={(event) => {
+                    event.stopPropagation?.();
+                    handleDeleteTask(task.id, task.titulo);
+                  }}
                   style={styles.deleteBtn}
                 >
                   <Ionicons name="trash-outline" size={18} color={COLORS.danger} />
@@ -205,14 +315,17 @@ function AdminTasksContent({ navigation }) {
                   <Text style={styles.assignedText}>{getUserName(task.atribuido_a)}</Text>
                 </View>
               </View>
-            </View>
+            </TouchableOpacity>
           ))
         )}
       </ScrollView>
 
       {/* Modal de criação */}
       <Modal visible={modalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Nova Tarefa</Text>
@@ -221,7 +334,7 @@ function AdminTasksContent({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <View style={styles.field}>
                 <Text style={styles.label}>Título *</Text>
                 <TextInput
@@ -258,6 +371,31 @@ function AdminTasksContent({ navigation }) {
               </View>
 
               <View style={styles.field}>
+                <Text style={styles.label}>Veículo *</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.userList}>
+                  {veiculos.map((veiculo) => (
+                    <TouchableOpacity
+                      key={veiculo.id}
+                      style={[
+                        styles.userChip,
+                        veiculoId === veiculo.id && styles.userChipSelected,
+                      ]}
+                      onPress={() => setVeiculoId(veiculo.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.userChipText,
+                          veiculoId === veiculo.id && styles.userChipTextSelected,
+                        ]}
+                      >
+                        {veiculo.modelo} • {veiculo.placa}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+
+              <View style={styles.field}>
                 <Text style={styles.label}>Atribuir a *</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.userList}>
                   {usuarios.map((u) => (
@@ -282,6 +420,43 @@ function AdminTasksContent({ navigation }) {
                 </ScrollView>
               </View>
 
+              <View style={styles.field}>
+                <Text style={styles.label}>Data limite * (DD/MM/AAAA)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="DD/MM/AAAA"
+                  placeholderTextColor={COLORS.gray400}
+                  value={dataLimite}
+                  onChangeText={(value) => setDataLimite(formatDateInput(value))}
+                  keyboardType="numeric"
+                  maxLength={10}
+                />
+              </View>
+
+              <View style={styles.field}>
+                <Text style={styles.label}>Hora limite * {horaLimiteDisplay ? `(${horaLimiteDisplay})` : ''}</Text>
+                <TouchableOpacity
+                  style={styles.timePickerButton}
+                  onPress={() => setShowTimePicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="time-outline" size={18} color={COLORS.primary} />
+                  <Text style={styles.timePickerButtonText}>
+                    {horaLimiteDisplay || 'Selecionar Hora Limite'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {showTimePicker && (
+                <DateTimePicker
+                  value={horaLimite}
+                  mode="time"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={handleTimePickerChange}
+                  textColor={COLORS.text}
+                />
+              )}
+
               <TouchableOpacity
                 style={[styles.saveButton, saving && styles.saveButtonDisabled]}
                 onPress={handleCreateTask}
@@ -291,12 +466,15 @@ function AdminTasksContent({ navigation }) {
                 {saving ? (
                   <ActivityIndicator color={COLORS.white} />
                 ) : (
-                  <Text style={styles.saveButtonText}>Criar Tarefa</Text>
+                  <View style={styles.saveButtonContent}>
+                    <Ionicons name="checkmark-circle-outline" size={18} color={COLORS.white} />
+                    <Text style={styles.saveButtonText}>Criar Tarefa</Text>
+                  </View>
                 )}
               </TouchableOpacity>
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -418,13 +596,36 @@ const styles = StyleSheet.create({
   },
   userChipText: { fontSize: 13, color: COLORS.text, fontWeight: '600' },
   userChipTextSelected: { color: COLORS.white },
+  timePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: COLORS.gray100,
+    borderRadius: BORDER_RADIUS.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  timePickerButtonText: {
+    fontSize: 15,
+    color: COLORS.text,
+    fontWeight: '600',
+    flex: 1,
+  },
   saveButton: {
     backgroundColor: COLORS.primary,
     paddingVertical: SPACING.md,
     borderRadius: BORDER_RADIUS.md,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: SPACING.sm,
     marginBottom: SPACING.lg,
+  },
+  saveButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
   },
   saveButtonDisabled: { opacity: 0.6 },
   saveButtonText: { color: COLORS.white, fontSize: 16, fontWeight: '700' },

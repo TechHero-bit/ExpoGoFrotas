@@ -5,14 +5,16 @@ import {
     Text,
     ScrollView,
     StyleSheet,
-    ActivityIndicator
+    ActivityIndicator,
+    TouchableOpacity
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../theme';
 import { supabase } from '../services/supabase';
 import { fetchTarefas } from '../services/dbService';
+import { formatStatusLabel, normalizeStatus } from '../utils/taskStatus';
 
-export default function TasksScreen() {
+export default function TasksScreen({ navigation }) {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -88,27 +90,34 @@ export default function TasksScreen() {
           </View>
         ) : (
           tasks.map((task) => (
-            <View key={task.id} style={styles.taskCard}>
+            <TouchableOpacity
+              key={task.id}
+              style={styles.taskCard}
+              onPress={() => navigation.navigate('DetalhesDaTarefa', { taskId: task.id })}
+              activeOpacity={0.9}
+            >
               <View style={styles.taskHeader}>
                 <Text style={styles.taskTitle}>{task.titulo}</Text>
                 <Text
                   style={[
                     styles.taskStatus,
-                    task.status === 'Em andamento'
+                    normalizeStatus(task.status) === 'em_andamento'
                       ? styles.statusActive
-                      : task.status === 'Pendente'
+                      : normalizeStatus(task.status) === 'pendente'
                       ? styles.statusPending
-                      : styles.statusScheduled,
+                      : normalizeStatus(task.status) === 'interrompido'
+                      ? styles.statusInterrupted
+                      : styles.statusDone,
                   ]}
                 >
-                  {task.status}
+                  {formatStatusLabel(task.status)}
                 </Text>
               </View>
               <View style={styles.taskDetailRow}>
                 <Ionicons name="location-outline" size={16} color={COLORS.primary} />
                 <Text style={styles.taskSubtitle}>{task.localizacao || task.descricao || 'Sem local definido'}</Text>
               </View>
-            </View>
+            </TouchableOpacity>
           ))
         )}
       </ScrollView>
@@ -136,7 +145,8 @@ const styles = StyleSheet.create({
   taskStatus: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: BORDER_RADIUS.lg },
   statusActive: { backgroundColor: '#E6F5EA', color: COLORS.primary },
   statusPending: { backgroundColor: '#FFF4E6', color: '#FF8C00' },
-  statusScheduled: { backgroundColor: '#EAF0FF', color: '#1E3A8A' },
+  statusInterrupted: { backgroundColor: '#FFF2E8', color: '#C2410C' },
+  statusDone: { backgroundColor: '#EAF0FF', color: '#1E3A8A' },
   taskDetailRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
   taskSubtitle: { fontSize: 13, color: COLORS.textSecondary },
   errorText: { color: COLORS.danger, textAlign: 'center' },

@@ -26,6 +26,7 @@ import AdminTasksScreen from './src/screens/AdminTasksScreen';
 import AdminUsersScreen from './src/screens/AdminUsersScreen';
 import RideHistoryScreen from './src/screens/RideHistoryScreen';
 import RideDetailsScreen from './src/screens/RideDetailsScreen';
+import DetalhesDaTarefa from './src/screens/DetalhesDaTarefa';
 
 import { supabase } from './src/services/supabase';
 import { fetchUserProfile } from './src/services/dbService';
@@ -47,6 +48,7 @@ function FleetStackScreen() {
       <Stack.Screen name="CreateVehicle" component={CreateVehicleScreen} />
       <Stack.Screen name="RideHistory" component={RideHistoryScreen} />
       <Stack.Screen name="RideDetails" component={RideDetailsScreen} />
+      <Stack.Screen name="DetalhesDaTarefa" component={DetalhesDaTarefa} />
     </Stack.Navigator>
   );
 }
@@ -138,11 +140,14 @@ function AppContent() {
   }
 
   return (
-    <NavigationContainer>
+      <NavigationContainer>
       <StatusBar style="dark" />
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {session && profile ? (
-          <Stack.Screen name="Main" component={AppTabs} />
+          <>
+            <Stack.Screen name="Main" component={AppTabs} />
+            <Stack.Screen name="DetalhesDaTarefa" component={DetalhesDaTarefa} />
+          </>
         ) : (
           <Stack.Screen name="Auth" component={AuthStack} />
         )}

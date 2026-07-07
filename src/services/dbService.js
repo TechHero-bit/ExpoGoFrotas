@@ -104,15 +104,20 @@ export async function fetchTarefas(usuarioId) {
 
   const { data, error } = await supabase
     .from('tarefas')
-    .select('id, titulo, descricao, status, localizacao, data_limite')
+    .select('id, titulo, descricao, status, localizacao, data_limite, agendado_em')
     .eq('atribuido_a', usuarioId)
-    .order('data_limite', { ascending: true });
+    .order('agendado_em', { ascending: false });
 
   if (error) {
     console.error('[DB SERVICE] Erro Supabase fetchTarefas:', error);
     throw error;
   }
-  return data;
+
+  return (data || []).sort((a, b) => {
+    const dateA = new Date(a?.agendado_em || 0).getTime();
+    const dateB = new Date(b?.agendado_em || 0).getTime();
+    return dateB - dateA;
+  });
 }
 
 export async function fetchDashboardMetrics() {
@@ -707,6 +712,31 @@ export async function fetchNotifications(userId) {
     throw error;
   }
   return data;
+}
+
+export async function createTaskAssignmentNotification({ userId, taskTitle }) {
+  if (!userId) {
+    return null;
+  }
+
+  const mensagem = taskTitle
+    ? `Nova tarefa atribuída: ${taskTitle}`
+    : 'Você recebeu uma nova tarefa atribuída.';
+
+  const { error } = await supabase
+    .from('notificacoes')
+    .insert([{
+      user_id: userId,
+      mensagem,
+      lida: false,
+      created_at: new Date().toISOString(),
+    }]);
+
+  if (error) {
+    throw error;
+  }
+
+  return true;
 }
 
 export async function markNotificationsAsRead(userId) {
