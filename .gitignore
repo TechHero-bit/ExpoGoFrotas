@@ -3,12 +3,18 @@ node_modules/
 
 # Local environment
 .env
+.env*.local
+
+# AI Agent & Graph outputs
+.agents/
+graphify-out/
 
 # Expo local files
 .expo/
 
 # IDE/editor settings
 .idea/
+.vscode/
 
 # Android build output and local keystore
 android/app/build/
@@ -25,3 +31,4 @@ migrations/
 
 # Other local files
 *.log
+
