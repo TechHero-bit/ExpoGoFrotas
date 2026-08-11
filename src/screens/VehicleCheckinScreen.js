@@ -125,7 +125,7 @@ export default function VehicleCheckinScreen({ navigation }) {
 
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
-      quality: 0.7,
+      quality: 0.4,
       base64: true,
     });
 

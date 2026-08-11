@@ -1,64 +1,57 @@
 import { Alert } from 'react-native';
 import { supabase } from './supabase';
+import { decode } from 'base64-arraybuffer';
 
 /**
- * Função utilitária para fazer upload de imagens para o Supabase Storage
- * usando Blob via fetch (mais confiável no React Native que FormData).
- * Inclui refresh de token para garantir que a autenticação está válida.
+ * Função utilitária para fazer upload de imagens para o Supabase Storage.
+ * Prioriza o uso de Base64 (mais estável no Expo) e inclui timeout.
  */
 export async function uploadImageToSupabase(imageAsset, prefix, bucketName = 'evidencias', filePathOverride = null) {
-  if (!imageAsset || !imageAsset.uri || imageAsset.uri === 'sem-imagem') {
+  if (!imageAsset || (!imageAsset.uri && !imageAsset.base64)) {
     return null;
   }
 
   try {
-    // Refresh the session to ensure the token is fresh before uploading
-    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-    if (refreshError) {
-      console.warn('[UPLOAD SUPABASE] Aviso ao refresh da sessão:', refreshError.message);
-    }
-
-    const { uri } = imageAsset;
-    const ext = (filePathOverride?.split('.').pop() || uri.split('.').pop() || 'jpg').toLowerCase();
+    const { uri, base64 } = imageAsset;
+    const ext = (filePathOverride?.split('.').pop() || uri?.split('.').pop() || 'jpg').toLowerCase();
     const fileName = `${prefix}_${Date.now()}.${ext}`;
     const filePath = filePathOverride || `Imagens de check-in e check-out/${fileName}`;
-    const contentType = ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'application/octet-stream';
+    const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
 
-    console.log(`[LOGITRACK] Iniciando upload: ${filePath} (${contentType})`);
+    console.log(`[LOGITRACK] Iniciando upload via ${base64 ? 'Base64' : 'URI'}: ${filePath}`);
 
-    const response = await fetch(uri);
-    const uploadData = await response.blob();
-
-    const { error: uploadError } = await supabase.storage
-      .from(bucketName)
-      .upload(filePath, uploadData, {
-        contentType,
-        upsert: true
-      });
-
-    if (uploadError) {
-      console.error('[UPLOAD SUPABASE] Erro de upload:', {
-        code: uploadError.code,
-        message: uploadError.message,
-        bucket: bucketName,
-        path: filePath
-      });
-      throw uploadError;
+    let uploadData;
+    if (base64) {
+      uploadData = decode(base64);
+    } else {
+      const response = await fetch(uri);
+      uploadData = await response.blob();
     }
 
-    const { data: publicData, error: publicUrlError } = await supabase.storage
-      .from(bucketName)
-      .getPublicUrl(filePath);
+    // Configurar AbortController para timeout de 45 segundos
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
 
-    if (publicUrlError || !publicData?.publicUrl) {
-      throw publicUrlError || new Error('Falha ao obter a URL pública da imagem.');
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from(bucketName)
+        .upload(filePath, uploadData, {
+          contentType,
+          upsert: true,
+          abortSignal: controller.signal
+        });
+
+      if (uploadError) throw uploadError;
+    } finally {
+      clearTimeout(timeoutId);
     }
 
-    console.log(`[LOGITRACK] Upload concluído: ${publicData.publicUrl}`);
+    const { data: publicData } = await supabase.storage.from(bucketName).getPublicUrl(filePath);
     return { publicUrl: publicData.publicUrl, path: filePath };
+
   } catch (error) {
-    console.error('[UPLOAD SUPABASE] Falha ao enviar imagem:', error);
-    throw new Error(error.message || 'Falha ao enviar imagem para o storage.');
+    console.error('[UPLOAD SUPABASE] Falha:', error.message);
+    return null;
   }
 }
 
@@ -222,16 +215,14 @@ export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial,
     // ============================================
     // 1. VALIDAÇÃO DE ENTRADA
     // ============================================
-    console.log('[LOGITRACK] Iniciando createJourneyAndCheckin com params:', {
+    console.log('[LOGITRACK] Iniciando createJourneyAndCheckin com params (reduzido):', {
       usuarioId,
       veiculoId,
       kmInicial,
       nivelCombustivel,
-      painelUrl,
+      temPainel: !!painelUrl,
       origem,
       destino,
-      origemCoords,
-      destinoCoords,
     });
 
     // Validar usuarioId
@@ -354,28 +345,54 @@ export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial,
 
     const uploadedPaths = [];
     try {
-      const selfieUpload = selfieUrl ? await uploadImageToSupabase(selfieUrl, `checkin_selfie_${jornada.id}`) : null;
-      const painelUpload = painelUrl ? await uploadImageToSupabase(painelUrl, `checkin_painel_${jornada.id}`) : null;
+      // 3.1 PREPARAR TAREFAS DE UPLOAD EM PARALELO
+      const uploadTasks = [];
 
-      const fotosVeiculoUrls = [];
-      for (let i = 0; i < fotosVeiculoUrl.length; i++) {
-        if (fotosVeiculoUrl[i]) {
-          const upload = await uploadImageToSupabase(fotosVeiculoUrl[i], `checkin_veiculo_${jornada.id}_${i}`);
-          if (upload) {
-            fotosVeiculoUrls.push(upload.publicUrl);
-            uploadedPaths.push(upload.path);
-          }
-        }
+      // Selfie
+      if (selfieUrl) {
+        uploadTasks.push(
+          uploadImageToSupabase(selfieUrl, `checkin_selfie_${jornada.id}`)
+            .then(res => ({ type: 'selfie', data: res }))
+        );
       }
 
-      const finalSelfieUrl = selfieUpload ? selfieUpload.publicUrl : null;
-      const finalPlacaUrl = fotosVeiculoUrls.length > 0 ? fotosVeiculoUrls.join(',') : null;
-      const finalPainelUrl = painelUpload ? painelUpload.publicUrl : null;
+      // Painel
+      if (painelUrl) {
+        uploadTasks.push(
+          uploadImageToSupabase(painelUrl, `checkin_painel_${jornada.id}`)
+            .then(res => ({ type: 'painel', data: res }))
+        );
+      }
 
-      if (selfieUpload && selfieUpload.path) uploadedPaths.push(selfieUpload.path);
-      if (painelUpload && painelUpload.path) uploadedPaths.push(painelUpload.path);
+      // Fotos do Veículo
+      fotosVeiculoUrl.forEach((foto, i) => {
+        if (foto) {
+          uploadTasks.push(
+            uploadImageToSupabase(foto, `checkin_veiculo_${jornada.id}_${i}`)
+              .then(res => ({ type: 'veiculo', index: i, data: res }))
+          );
+        }
+      });
 
-      console.log('[LOGITRACK] Inserindo dados de check-in...');
+      console.log(`[LOGITRACK] Iniciando ${uploadTasks.length} uploads em paralelo...`);
+      const results = await Promise.all(uploadTasks);
+
+      let finalSelfieUrl = null;
+      let finalPainelUrl = null;
+      const vehiclePhotoUrls = [];
+
+      results.forEach(result => {
+        if (result.data) {
+          uploadedPaths.push(result.data.path);
+          if (result.type === 'selfie') finalSelfieUrl = result.data.publicUrl;
+          if (result.type === 'painel') finalPainelUrl = result.data.publicUrl;
+          if (result.type === 'veiculo') vehiclePhotoUrls.push(result.data.publicUrl);
+        }
+      });
+
+      const finalPlacaUrl = vehiclePhotoUrls.length > 0 ? vehiclePhotoUrls.join(',') : null;
+
+      console.log('[LOGITRACK] Todos os uploads concluídos. Inserindo dados de check-in...');
 
       const { data: checkin, error: checkinError } = await supabase.from('checkins').insert([
         {
@@ -383,8 +400,8 @@ export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial,
           veiculo_id: parseInt(veiculoIdStr) || veiculoIdStr,
           km: kmNumerico,
           nivel_combustivel: nivelCombustivel.trim(),
-          selfie_uri: finalSelfieUrl,
-          foto_placa_uri: finalPlacaUrl,
+          selfie_uri: finalSelfieUrl || 'N/A',
+          foto_placa_uri: finalPlacaUrl || 'N/A',
           foto_painel_uri: finalPainelUrl,
           data_hora: new Date().toISOString(),
         },
@@ -495,7 +512,7 @@ export async function createJourneyAndCheckin({ usuarioId, veiculoId, kmInicial,
   }
 }
 
-export async function finishJourney({ jornadaId, veiculoId, kmFinal, nivelCombustivel, observacoes, selfieUrl, fotosVeiculoUrl = [], painelUrl }) {
+export async function finishJourney({ jornadaId, veiculoId, kmFinal, nivelCombustivel, observacoes, selfieUrl, fotosVeiculoUrl = [], painelUrl, onProgress }) {
   try {
     console.log('[LOGITRACK] Iniciando finishJourney com params:', {
       jornadaId,
@@ -503,6 +520,8 @@ export async function finishJourney({ jornadaId, veiculoId, kmFinal, nivelCombus
       kmFinal,
       nivelCombustivel,
     });
+
+    onProgress?.('Validando dados...');
 
     // Validar entrada
     if (!jornadaId) {
@@ -521,31 +540,50 @@ export async function finishJourney({ jornadaId, veiculoId, kmFinal, nivelCombus
     }
 
     // ============================================
-    // 1. UPLOAD DE IMAGENS E INSERT NA TABELA CHECKOUTS
+    // 1. UPLOAD DE IMAGENS EM PARALELO
     // ============================================
-    console.log('[LOGITRACK] Realizando upload das fotos de check-out...');
+    onProgress?.('Enviando imagens...');
+    console.log('[LOGITRACK] Realizando upload das fotos de check-out em paralelo...');
+
+    const uploadTasks = [];
     const uploadedPaths = [];
-    const selfieUpload = selfieUrl ? await uploadImageToSupabase(selfieUrl, `checkout_selfie_${jornadaId}`) : null;
-    const painelUpload = painelUrl ? await uploadImageToSupabase(painelUrl, `checkout_painel_${veiculoIdInt}`) : null;
 
-    const fotosVeiculoUrls = [];
-    for (let i = 0; i < fotosVeiculoUrl.length; i++) {
-      if (fotosVeiculoUrl[i]) {
-        const upload = await uploadImageToSupabase(fotosVeiculoUrl[i], `checkout_veiculo_${jornadaId}_${i}`);
-        if (upload) {
-          fotosVeiculoUrls.push(upload.publicUrl);
-          uploadedPaths.push(upload.path);
-        }
-      }
+    // Selfie
+    if (selfieUrl) {
+      uploadTasks.push(uploadImageToSupabase(selfieUrl, `checkout_selfie_${jornadaId}`).then(res => ({ type: 'selfie', res })));
     }
+    // Painel
+    if (painelUrl) {
+      uploadTasks.push(uploadImageToSupabase(painelUrl, `checkout_painel_${veiculoIdInt}`).then(res => ({ type: 'painel', res })));
+    }
+    // Fotos do Veículo
+    fotosVeiculoUrl.forEach((uri, index) => {
+      if (uri) {
+        uploadTasks.push(uploadImageToSupabase(uri, `checkout_veiculo_${jornadaId}_${index}`).then(res => ({ type: 'veiculo', index, res })));
+      }
+    });
 
-    const finalSelfieUrl = selfieUpload ? selfieUpload.publicUrl : null;
-    const finalVeiculoUrl = fotosVeiculoUrls.length > 0 ? fotosVeiculoUrls.join(',') : null;
-    const finalPainelUrl = painelUpload ? painelUpload.publicUrl : null;
+    const uploadResults = await Promise.all(uploadTasks);
 
-    if (selfieUpload && selfieUpload.path) uploadedPaths.push(selfieUpload.path);
-    if (painelUpload && painelUpload.path) uploadedPaths.push(painelUpload.path);
+    let finalSelfieUrl = null;
+    let finalPainelUrl = null;
+    const vehiclePhotos = [];
 
+    uploadResults.forEach(item => {
+      if (item.res) {
+        uploadedPaths.push(item.res.path);
+        if (item.type === 'selfie') finalSelfieUrl = item.res.publicUrl;
+        if (item.type === 'painel') finalPainelUrl = item.res.publicUrl;
+        if (item.type === 'veiculo') vehiclePhotos[item.index] = item.res.publicUrl;
+      }
+    });
+
+    const finalVeiculoUrl = vehiclePhotos.filter(Boolean).join(',');
+
+    // ============================================
+    // 2. INSERT NA TABELA CHECKOUTS
+    // ============================================
+    onProgress?.('Registrando check-out...');
     console.log('[LOGITRACK] Inserindo checkout...');
 
     const { data: checkout, error: checkoutError } = await supabase.from('checkouts').insert([
@@ -554,8 +592,8 @@ export async function finishJourney({ jornadaId, veiculoId, kmFinal, nivelCombus
         veiculo_id: veiculoIdInt,
         nivel_combustivel: nivelCombustivel.trim(),
         observacoes: observacoes || null,
-        selfie_uri: finalSelfieUrl,
-        foto_veiculo_uri: finalVeiculoUrl,
+        selfie_uri: finalSelfieUrl || 'N/A',
+        foto_veiculo_uri: finalVeiculoUrl || 'N/A',
         foto_painel_uri: finalPainelUrl,
         data_hora: new Date().toISOString(),
       },
@@ -573,11 +611,10 @@ export async function finishJourney({ jornadaId, veiculoId, kmFinal, nivelCombus
       throw new Error(`Erro de Banco (Checkout): ${checkoutError.message}`);
     }
 
-    console.log('[LOGITRACK] Checkout registrado com sucesso.');
-
     // ============================================
-    // 2. ATUALIZAR STATUS DA JORNADA
+    // 3. ATUALIZAR STATUS DA JORNADA
     // ============================================
+    onProgress?.('Finalizando jornada...');
     console.log('[LOGITRACK] Finalizando jornada...');
 
     const { error: jornadaError } = await supabase
@@ -595,21 +632,19 @@ export async function finishJourney({ jornadaId, veiculoId, kmFinal, nivelCombus
       throw new Error(`Erro de Banco (Jornada): ${jornadaError.message}`);
     }
 
-    console.log('[LOGITRACK] Jornada finalizada com sucesso.');
-
     // ============================================
-    // 3. ATUALIZAR STATUS DO VEÍCULO
+    // 4. ATUALIZAR STATUS DO VEÍCULO (NÃO BLOQUEANTE)
     // ============================================
-    console.log('[LOGITRACK] Atualizando status do veículo para "Disponível"...');
+    onProgress?.('Concluindo...');
+    console.log('[LOGITRACK] Atualizando status do veículo...');
 
-    const { error: veiculoError } = await supabase
-      .from('veiculos')
+    supabase.from('veiculos')
       .update({ status: 'Disponível' })
-      .eq('id', veiculoIdInt);
-
-    if (veiculoError) {
-      console.warn('[AVISO] Falha ao atualizar status do veículo:', veiculoError.message);
-    }
+      .eq('id', veiculoIdInt)
+      .then(({ error: vErr }) => {
+        if (vErr) console.warn('[AVISO] Falha ao atualizar status do veículo:', vErr.message);
+        else console.log('[LOGITRACK] Veículo liberado.');
+      });
 
     console.log('[LOGITRACK] Jornada e checkout finalizados com sucesso!');
     return { success: true };

@@ -34,6 +34,7 @@ export default function VehicleCheckoutScreen({ navigation }) {
   const [painelUri, setPainelUri] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingStatus, setSavingStatus] = useState('');
   const [error, setError] = useState(null);
 
   // ── Estado do Mapa / Rota ──
@@ -100,7 +101,7 @@ export default function VehicleCheckoutScreen({ navigation }) {
 
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
-      quality: 0.7,
+      quality: 0.4,
       base64: true,
     });
 
@@ -124,7 +125,22 @@ export default function VehicleCheckoutScreen({ navigation }) {
     }
 
     setSaving(true);
+    setSavingStatus('Iniciando...');
     setError(null);
+
+    let isFinished = false;
+
+    // Temporizador de segurança (35 segundos)
+    const timeout = setTimeout(() => {
+      if (!isFinished) {
+        setSaving(false);
+        setSavingStatus('');
+        Alert.alert(
+          '⏰ Tempo excedido',
+          'A finalização está demorando mais que o esperado. Verifique sua conexão e tente novamente.'
+        );
+      }
+    }, 35000);
 
     try {
       const userResponse = await supabase.auth.getUser();
@@ -134,7 +150,6 @@ export default function VehicleCheckoutScreen({ navigation }) {
       }
 
       // 2. Validação e sanitização de Tipos (KM Final)
-      // Substitui vírgula por ponto para evitar erros de cast no backend (PostgreSQL)
       const sanitizedKm = kmFinal.replace(',', '.');
 
       await finishJourney({
@@ -147,25 +162,28 @@ export default function VehicleCheckoutScreen({ navigation }) {
         selfieUrl: selfieUri,
         fotosVeiculoUrl: [frenteUri, lateralEsqUri, lateralDirUri, traseiraUri],
         painelUrl: painelUri,
+        onProgress: (status) => setSavingStatus(status),
       });
 
+      isFinished = true;
+      clearTimeout(timeout);
       await clearJourney();
 
-      Alert.alert('Jornada finalizada', 'O encerramento da jornada foi registrado com sucesso.', [
+      Alert.alert('✅ Jornada finalizada', 'O encerramento da jornada foi registrado com sucesso.', [
         { text: 'OK', onPress: () => navigation.navigate('Dashboard') },
       ]);
     } catch (saveError) {
-      // 3. Tratamento de Erros detalhado
-      // Log completo do erro para depuração no terminal do Expo
+      isFinished = true;
+      clearTimeout(timeout);
       console.error('[VehicleCheckoutScreen] Erro ao finalizar jornada:', JSON.stringify(saveError, null, 2));
       console.error('[VehicleCheckoutScreen] Mensagem do erro:', saveError.message);
       
-      // Exibir o erro real vindo do backend/Supabase para facilitar diagnóstico
       const errorMessage = saveError?.message || saveError?.details || 'Erro desconhecido ao encerrar a jornada.';
       setError(`Falha: ${errorMessage}`);
-      Alert.alert('Erro ao finalizar jornada', errorMessage);
+      Alert.alert('❌ Erro ao finalizar jornada', errorMessage);
     } finally {
       setSaving(false);
+      setSavingStatus('');
     }
   };
 
@@ -301,8 +319,14 @@ export default function VehicleCheckoutScreen({ navigation }) {
           activeOpacity={0.85}
           disabled={!kmFinal.trim() || !combustivel.trim() || saving}
         >
-          <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
-          <Text style={styles.finishBtnText}>{saving ? 'Finalizando...' : 'Finalizar Jornada'}</Text>
+          {saving ? (
+            <ActivityIndicator size="small" color={COLORS.white} />
+          ) : (
+            <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
+          )}
+          <Text style={styles.finishBtnText}>
+            {saving ? (savingStatus || 'Finalizando...') : 'Finalizar Jornada'}
+          </Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
